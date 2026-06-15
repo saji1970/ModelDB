@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MemCell — Algorithm Reference &amp; ML Model Storage Guide</title>
+<style>
+  /* ── Reset & Base ─────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #fff;
+    color: #1a1a1a;
+    line-height: 1.6;
+    padding: 48px 60px 80px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  /* ── Typography ───────────────────────────────────────────── */
+  h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.5px; color: #0f0f0f; }
+  h2 { font-size: 20px; font-weight: 650; color: #0f0f0f; margin: 36px 0 10px; }
+  h3 { font-size: 15px; font-weight: 650; color: #1a1a1a; margin: 20px 0 8px; }
+  p  { color: #444; margin-bottom: 10px; line-height: 1.65; }
+  code {
+    font-family: "Cascadia Code", "Fira Code", ui-monospace, monospace;
+    font-size: 12px;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #374151;
+  }
+
+  /* ── Layout ───────────────────────────────────────────────── */
+  .grid2   { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .grid3   { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  .grid4   { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 36px 0; }
+
+  /* ── Stat boxes ───────────────────────────────────────────── */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+  .stat {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: #fafafa;
+  }
+  .stat .val { font-size: 22px; font-weight: 700; color: #0f0f0f; }
+  .stat .lbl { font-size: 11px; color: #6b7280; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat.blue .val { color: #2563eb; }
+  .stat.green .val { color: #16a34a; }
+
+  /* ── Pills ────────────────────────────────────────────────── */
+  .pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 99px;
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+  }
+  .pill.blue   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+  .pill.green  { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+  .pill.orange { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+  .pill.gray   { background: #f9fafb; color: #6b7280; border-color: #e5e7eb; }
+
+  /* ── Code blocks ──────────────────────────────────────────── */
+  .cblock {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  .cblock-header {
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 6px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #9ca3af;
+    font-family: monospace;
+  }
+  .cblock pre {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    font-family: "Cascadia Code", "Fira Code", ui-monospace, monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 16px 18px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .cblock pre .c  { color: #6c7086; }   /* comment */
+  .cblock pre .kw { color: #89b4fa; }   /* keyword / type */
+  .cblock pre .fn { color: #cba6f7; }   /* function */
+  .cblock pre .st { color: #a6e3a1; }   /* string */
+  .cblock pre .nm { color: #fab387; }   /* number */
+
+  /* ── Tables ───────────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 10px 0;
+  }
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #6b7280;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px 12px;
+    background: #f9fafb;
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #374151;
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr.hl td { background: #f0fdf4; }
+  tr.hl-blue td { background: #eff6ff; }
+  tr.hl-red td { background: #fff1f2; }
+  .tbl-wrap {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  /* ── Cards ────────────────────────────────────────────────── */
+  .card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .card-header {
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 10px 16px;
+    font-weight: 650;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .card-body { padding: 16px; }
+
+  /* ── Callouts ─────────────────────────────────────────────── */
+  .callout {
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.55;
+    margin: 10px 0;
+  }
+  .callout.green  { background: #f0fdf4; border-left: 3px solid #22c55e; color: #166534; }
+  .callout.blue   { background: #eff6ff; border-left: 3px solid #3b82f6; color: #1e40af; }
+  .callout.gray   { background: #f9fafb; border-left: 3px solid #d1d5db; color: #374151; }
+  .callout.orange { background: #fff7ed; border-left: 3px solid #f97316; color: #9a3412; }
+
+  /* ── Pipeline / Flow diagrams ─────────────────────────────── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    margin: 16px 0;
+    row-gap: 8px;
+  }
+  .pipe-node {
+    border: 1.5px solid #d1d5db;
+    border-radius: 6px;
+    padding: 8px 14px;
+    text-align: center;
+    min-width: 100px;
+    background: #f9fafb;
+  }
+  .pipe-node.ml {
+    border-color: #3b82f6;
+    background: #eff6ff;
+  }
+  .pipe-node.io {
+    border-radius: 24px;
+    background: #f3f4f6;
+    border-color: #e5e7eb;
+  }
+  .pipe-node .pn-title { font-size: 12px; font-weight: 650; color: #111; }
+  .pipe-node .pn-sub   { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+  .pipe-node.ml .pn-sub { color: #2563eb; }
+  .pipe-arrow { color: #9ca3af; font-size: 18px; padding: 0 4px; flex-shrink: 0; }
+  .ml-bracket {
+    border: 1.5px dashed #3b82f6;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #eff6ff08;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+  .ml-label {
+    position: absolute;
+    top: -10px;
+    left: 12px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #2563eb;
+    background: #fff;
+    padding: 0 6px;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Load flow ────────────────────────────────────────────── */
+  .load-flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .lf-node {
+    border: 1.5px solid #d1d5db;
+    border-radius: 6px;
+    padding: 8px 24px;
+    text-align: center;
+    background: #f9fafb;
+    min-width: 200px;
+  }
+  .lf-node.io { border-radius: 24px; }
+  .lf-node.thread { border-color: #3b82f6; background: #eff6ff; }
+  .lf-node .ln-t { font-size: 12px; font-weight: 650; }
+  .lf-node .ln-s { font-size: 10px; color: #9ca3af; margin-top: 2px; }
+  .lf-node.thread .ln-s { color: #2563eb; }
+  .lf-arrow { color: #9ca3af; font-size: 18px; line-height: 1; }
+  .lf-threads { display: flex; gap: 12px; align-items: center; }
+  .lf-vbar { width: 1.5px; height: 20px; background: #d1d5db; margin: 0 auto; }
+
+  /* ── Step cards ───────────────────────────────────────────── */
+  .step-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .step-header {
+    padding: 10px 14px;
+    font-weight: 650;
+    font-size: 13px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .step-header.train  { background: #f9fafb; }
+  .step-header.deploy { background: #eff6ff; }
+  .step-header.serve  { background: #f0fdf4; }
+  .step-body { padding: 14px; }
+  .bullet-list { list-style: none; margin-bottom: 12px; }
+  .bullet-list li { font-size: 12px; color: #4b5563; padding: 3px 0 3px 14px; position: relative; line-height: 1.5; }
+  .bullet-list li::before { content: ""; position: absolute; left: 0; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: #9ca3af; }
+  .mini-code {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  /* ── API grid ─────────────────────────────────────────────── */
+  .api-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .api-item {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fafafa;
+  }
+  .api-item .api-fn { font-family: monospace; font-size: 12px; color: #374151; }
+
+  /* ── Section label ────────────────────────────────────────── */
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #9ca3af;
+    margin-bottom: 6px;
+  }
+
+  /* ── Stage rows ───────────────────────────────────────────── */
+  .stage-row {
+    border-bottom: 1px solid #f3f4f6;
+    padding: 14px 0;
+    display: grid;
+    grid-template-columns: 160px 1fr 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  .stage-row:last-child { border-bottom: none; }
+  .stage-num { font-weight: 700; font-size: 13px; }
+  .stage-col-title { font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .stage-col-body  { font-size: 12px; color: #4b5563; line-height: 1.55; }
+
+  /* ── Print ────────────────────────────────────────────────── */
+  @media print {
+    body { padding: 20px 32px; font-size: 12px; }
+    h1   { font-size: 26px; }
+    h2   { font-size: 17px; margin: 28px 0 8px; }
+    .cblock pre { font-size: 11px; }
+    .grid2, .grid3 { gap: 16px; }
+    hr { margin: 24px 0; }
+    .page-break { page-break-before: always; }
+    .stat-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+
+  /* ── Cover header ─────────────────────────────────────────── */
+  .cover-bar {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .cover-sub {
+    font-size: 18px;
+    font-weight: 400;
+    color: #6b7280;
+    margin-bottom: 12px;
+  }
+  .cover-desc { color: #555; max-width: 720px; line-height: 1.7; }
+
+  /* ── Footer ───────────────────────────────────────────────── */
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 24px;
+    font-size: 12px;
+    color: #9ca3af;
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ COVER ══════════════════════════════════════════════════ -->
+<div class="cover-bar">
+  <h1>MemCell</h1>
+  <span class="pill blue">v0.2.0</span>
+  <span class="pill gray">June 2026</span>
+</div>
+<div class="cover-sub">Algorithm Reference &amp; ML Model Storage Guide</div>
+<p class="cover-desc">
+  A complete technical reference for the MemCell compression algorithm and a practical
+  guide to storing, retrieving, and managing ML model weights using the
+  <code>memalgo_api.h</code> C library. Covers all nine compression stages, the parallel
+  decompression model, the model registry, and streaming for large models.
+</p>
+
+<div class="stat-grid">
+  <div class="stat">
+    <div class="val">9</div>
+    <div class="lbl">Compression stages</div>
+  </div>
+  <div class="stat green">
+    <div class="val">42%</div>
+    <div class="lbl">INT4 weight reduction</div>
+  </div>
+  <div class="stat green">
+    <div class="val">35–60%</div>
+    <div class="lbl">Float32/16 reduction</div>
+  </div>
+  <div class="stat blue">
+    <div class="val">3–8×</div>
+    <div class="lbl">Parallel decompress speedup</div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══ HOW THE ALGORITHM WORKS ════════════════════════════════ -->
+<h2>How the Algorithm Works</h2>
+<p>
+  MemCell processes data through a sequential pipeline. Each stage removes one class of
+  redundancy that the others cannot. <strong>Bit-Pack</strong> and
+  <strong>Byte Shuffle</strong> are ML-specific stages added in v0.2.0.
+</p>
+
+<div class="pipeline" style="margin:20px 0;">
+  <div class="pipe-node io"><div class="pn-title">Model Weights</div><div class="pn-sub">raw bytes</div></div>
+  <span class="pipe-arrow">→</span>
+  <div class="pipe-node"><div class="pn-title">1. Analyze</div><div class="pn-sub">classify + plan</div></div>
+  <span class="pipe-arrow">→</span>
+  <div class="pipe-node"><div class="pn-title">2. Chunk</div><div class="pn-sub">Buzhash 4 KB</div></div>
+  <span class="pipe-arrow">→</span>
+  <div class="pipe-node"><div class="pn-title">3. Dedup</div><div class="pn-sub">Hash128 map</div></div>
+  <span class="pipe-arrow">→</span>
+
+  <div class="ml-bracket">
+    <span class="ml-label">ML-SPECIFIC</span>
+    <div class="pipe-node ml"><div class="pn-title">4. Bit-Pack</div><div class="pn-sub">INT4 → 4 bit</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node ml"><div class="pn-title">5. Byte Shuffle</div><div class="pn-sub">float planes</div></div>
+  </div>
+
+  <span class="pipe-arrow">→</span>
+  <div class="pipe-node"><div class="pn-title">6. Pattern</div><div class="pn-sub">2–8 byte codes</div></div>
+  <span class="pipe-arrow">→</span>
+  <div class="pipe-node"><div class="pn-title">7. Delta</div><div class="pn-sub">XOR+RLE</div></div>
+  <span class="pipe-arrow">→</span>
+  <div class="pipe-node"><div class="pn-title">8. LZSS</div><div class="pn-sub">64 KB window</div></div>
+  <span class="pipe-arrow">→</span>
+  <div class="pipe-node"><div class="pn-title">9. rANS</div><div class="pn-sub">order-1 entropy</div></div>
+  <span class="pipe-arrow">→</span>
+  <div class="pipe-node io"><div class="pn-title">.cell File</div><div class="pn-sub">CRC32 verified</div></div>
+</div>
+
+<div class="callout blue" style="margin-top:0;">
+  The <strong>Analyzer</strong> (Stage 1) automatically selects which downstream stages
+  activate based on entropy and distinct byte count. High-entropy data skips expensive
+  stages that cannot help. Every stage validates its own output — none can make data larger.
+</div>
+
+<hr>
+
+<!-- ══ STAGE REFERENCE ════════════════════════════════════════ -->
+<h2>Stage-by-Stage Algorithm Reference</h2>
+
+<div class="tbl-wrap">
+  <div class="stage-row" style="background:#f9fafb; font-weight:600; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:0.4px; padding:8px 0 8px 0; border-bottom:1px solid #e5e7eb;">
+    <div style="padding-left:0;">Stage</div>
+    <div>What it does</div>
+    <div>ML relevance</div>
+    <div>Skip condition</div>
+  </div>
+  <div class="stage-row">
+    <div class="stage-num">1 · Analyze</div>
+    <div><div class="stage-col-body">Reads 64 KB sample; computes Shannon entropy H = −Σ pᵢ log₂(pᵢ); builds byte histogram; classifies data type</div></div>
+    <div><div class="stage-col-body">Detects INT4 (16 distinct values → triggers BITPACK). Classifies float arrays as BINARY_STRUCTURED → enables SHUFFLE.</div></div>
+    <div><div class="stage-col-body" style="color:#9ca3af;">Never skipped</div></div>
+  </div>
+  <div class="stage-row">
+    <div class="stage-num">2 · Chunk</div>
+    <div><div class="stage-col-body">Buzhash rolling hash splits at natural boundaries. Target 4 KB, min 1 KB, max 16 KB.</div></div>
+    <div><div class="stage-col-body">Multi-layer models repeat tensors. Content-defined boundaries maximise deduplication hit rate across similar layers.</div></div>
+    <div><div class="stage-col-body" style="color:#9ca3af;">Always runs</div></div>
+  </div>
+  <div class="stage-row">
+    <div class="stage-num">3 · Dedup</div>
+    <div><div class="stage-col-body">FNV-1a 128-bit hash per chunk. Duplicates replaced by 4-byte reference ID instead of ~4 KB data.</div></div>
+    <div><div class="stage-col-body">Shared embedding layers, identical attention heads, checkpoints with unchanged layers — up to 50× for repeated structure.</div></div>
+    <div><div class="stage-col-body" style="color:#9ca3af;">Always runs</div></div>
+  </div>
+  <div class="stage-row" style="background:#eff6ff08;">
+    <div class="stage-num" style="color:#1d4ed8;">4 · Bit-Pack <span class="pill blue" style="font-size:10px;">ML</span></div>
+    <div><div class="stage-col-body">Counts distinct values per chunk; packs to minimum bits. ≤2→1 bit, ≤4→2 bits, ≤16→4 bits, ≤64→6 bits.</div></div>
+    <div><div class="stage-col-body">INT4 weights: 16 values → 4 bits each → immediate 2× reduction before any other stage. INT8 with limited range benefits similarly.</div></div>
+    <div><div class="stage-col-body" style="color:#9ca3af;">Skipped if header overhead exceeds savings</div></div>
+  </div>
+  <div class="stage-row" style="background:#eff6ff08;">
+    <div class="stage-num" style="color:#1d4ed8;">5 · Byte Shuffle <span class="pill blue" style="font-size:10px;">ML</span></div>
+    <div><div class="stage-col-body">Transposes byte planes: groups all byte-0s, byte-1s, etc. from typed arrays. [A0 A1 A2 A3][B0...] → [A0 B0 C0...][A1 B1 C1...]</div></div>
+    <div><div class="stage-col-body">Float32 byte 0 (sign+exponent MSB) is nearly constant across weights. Grouping creates long runs LZSS compresses 30–50% better.</div></div>
+    <div><div class="stage-col-body" style="color:#9ca3af;">Skipped if no element size reduces entropy by ≥0.5 bits/byte</div></div>
+  </div>
+  <div class="stage-row">
+    <div class="stage-num">6 · Pattern Genome</div>
+    <div><div class="stage-col-body">Builds 255-entry codebook of frequent 2–8 byte sequences; replaces them with escape+code pairs. O(1) hash lookup.</div></div>
+    <div><div class="stage-col-body">Common weight prefixes and tensor header patterns captured. Codebook serialized in .cell file for decoder.</div></div>
+    <div><div class="stage-col-body" style="color:#9ca3af;">Skipped if output ≥ input</div></div>
+  </div>
+  <div class="stage-row">
+    <div class="stage-num">7 · Delta</div>
+    <div><div class="stage-col-body">XOR + RLE between similar chunks (within 10% size). Zero runs encoded as [count][0x00]; diffs as [count][0x01][bytes].</div></div>
+    <div><div class="stage-col-body">Fine-tuned variants share most weights with base model — delta from base to fine-tune can be tiny.</div></div>
+    <div><div class="stage-col-body" style="color:#9ca3af;">Skipped if delta not ≥20% smaller</div></div>
+  </div>
+  <div class="stage-row">
+    <div class="stage-num">8 · LZSS</div>
+    <div><div class="stage-col-body">64 KB sliding-window dictionary; 258-byte max match; 32 768-entry hash table with 128-link chain depth. Lazy matching.</div></div>
+    <div><div class="stage-col-body">After byte shuffle, grouped exponent bytes form long repeated runs — all captured within the 64 KB window. 16× larger than v1.</div></div>
+    <div><div class="stage-col-body" style="color:#9ca3af;">Skipped if output ≥ input</div></div>
+  </div>
+  <div class="stage-row">
+    <div class="stage-num">9 · rANS</div>
+    <div><div class="stage-col-body">Order-1 context-adaptive Range ANS. PROB_SCALE=4096. Builds 256 conditional frequency tables for data >4 KB.</div></div>
+    <div><div class="stage-col-body">After LZSS, strong byte-to-byte correlations remain. Order-1 captures these for 5–15% additional reduction on structured data.</div></div>
+    <div><div class="stage-col-body" style="color:#9ca3af;">Skipped if output ≥ input</div></div>
+  </div>
+</div>
+
+<hr class="page-break">
+
+<!-- ══ STORING A MODEL ════════════════════════════════════════ -->
+<h2>Storing a Model</h2>
+<p>Two paths: single-call store (recommended) or compress-and-inspect for custom pipelines.</p>
+
+<div class="grid2">
+  <div>
+    <h3>Path A — Single call (recommended)</h3>
+    <p style="font-size:13px;">Use <code>memalgo_store_model()</code> — compresses and writes the <code>.cell</code> file in one call.</p>
+    <div class="cblock">
+      <div class="cblock-header"><span>memalgo_api.h</span><span class="pill gray">C API</span></div>
+      <pre><span class="c">// Weights already in memory (e.g. from PyTorch export)</span>
+<span class="kw">const</span> <span class="kw">uint8_t</span>* weights    = get_model_weights();
+<span class="kw">const</span> <span class="kw">size_t</span>   weight_len = get_model_size();
+
+<span class="c">// Store with automatic pipeline selection</span>
+<span class="kw">int</span> rc = <span class="fn">memalgo_store_model</span>(
+    <span class="st">"models/bert-base.cell"</span>,  <span class="c">// output path</span>
+    weights,
+    weight_len,
+    NULL                   <span class="c">// NULL = default options</span>
+);
+
+<span class="kw">if</span> (rc != MC_OK) {
+    <span class="fn">fprintf</span>(stderr, <span class="st">"Store failed: %d\n"</span>, rc);
+    <span class="kw">return</span> rc;
+}</pre>
+    </div>
+    <div class="callout green">
+      The Analyzer automatically detects float32 vs. INT4 and selects the optimal
+      combination of Byte Shuffle, Bit-Pack, LZSS, and rANS — no configuration needed.
+    </div>
+  </div>
+
+  <div>
+    <h3>Path B — Compress + inspect stats</h3>
+    <p style="font-size:13px;">Use <code>memalgo_compress_stats()</code> to see metrics before writing.</p>
+    <div class="cblock">
+      <div class="cblock-header"><span>memalgo_api.h</span><span class="pill gray">C API</span></div>
+      <pre><span class="kw">uint8_t</span>* compressed = NULL;
+<span class="kw">size_t</span>   comp_len   = <span class="nm">0</span>;
+McStats  stats;
+
+<span class="kw">int</span> rc = <span class="fn">memalgo_compress_stats</span>(
+    weights, weight_len,
+    &amp;compressed, &amp;comp_len,
+    &amp;stats,
+    NULL          <span class="c">// default options</span>
+);
+
+<span class="fn">printf</span>(<span class="st">"Original  : %zu B\n"</span>,   stats.original_size);
+<span class="fn">printf</span>(<span class="st">"Compressed: %zu B\n"</span>,  stats.compressed_size);
+<span class="fn">printf</span>(<span class="st">"Ratio     : %.1f%%\n"</span>,  stats.ratio * <span class="nm">100</span>);
+<span class="fn">printf</span>(<span class="st">"Chunks    : %u / %u\n"</span>,
+       stats.unique_chunks, stats.total_chunks);
+
+<span class="c">// Only write if worthwhile</span>
+<span class="kw">if</span> (stats.ratio &lt; <span class="nm">0.95</span>) {
+    FILE* f = <span class="fn">fopen</span>(<span class="st">"model.cell"</span>, <span class="st">"wb"</span>);
+    <span class="fn">fwrite</span>(compressed, <span class="nm">1</span>, comp_len, f);
+    <span class="fn">fclose</span>(f);
+}
+<span class="fn">memalgo_free</span>(compressed);</pre>
+    </div>
+  </div>
+</div>
+
+<h3>Compression options</h3>
+<div class="tbl-wrap">
+  <table>
+    <tr><th>McOptions field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>force_stages</code></td><td><code>uint8_t</code></td><td><code>0</code></td><td>Bitmask — force specific stages on regardless of Analyzer</td></tr>
+    <tr><td><code>skip_stages</code></td><td><code>uint8_t</code></td><td><code>0</code></td><td>Bitmask — unconditionally disable specific stages</td></tr>
+    <tr><td><code>chunk_target</code></td><td><code>uint32_t</code></td><td><code>4096</code></td><td>Target chunk size in bytes (min 1024, max 16384)</td></tr>
+    <tr><td><code>num_threads</code></td><td><code>int</code></td><td><code>0</code></td><td>0 = use hardware_concurrency(). Applies to decompression only.</td></tr>
+  </table>
+</div>
+
+<hr>
+
+<!-- ══ LOADING A MODEL ════════════════════════════════════════ -->
+<h2>Loading &amp; Accessing a Model</h2>
+<p>
+  Load decompresses all chunks in parallel across available CPU cores, then returns
+  a contiguous weight buffer bit-perfect with the original.
+</p>
+
+<div class="grid2">
+  <div>
+    <h3>Single-call load</h3>
+    <div class="cblock">
+      <div class="cblock-header"><span>memalgo_api.h</span><span class="pill gray">C API</span></div>
+      <pre><span class="kw">uint8_t</span>* weights = NULL;
+<span class="kw">size_t</span>   size    = <span class="nm">0</span>;
+
+<span class="c">// Decompress in parallel across all CPU cores</span>
+<span class="kw">int</span> rc = <span class="fn">memalgo_load_model</span>(
+    <span class="st">"models/bert-base.cell"</span>,
+    &amp;weights,
+    &amp;size
+);
+
+<span class="kw">if</span> (rc != MC_OK) {
+    <span class="fn">fprintf</span>(stderr, <span class="st">"Load failed: %d\n"</span>, rc);
+    <span class="kw">return</span> rc;
+}
+
+<span class="c">// weights = original bytes, bit-perfect</span>
+<span class="fn">load_weights_into_engine</span>(weights, size);
+<span class="fn">memalgo_free</span>(weights);</pre>
+    </div>
+    <div class="callout blue">
+      No configuration needed — per-chunk flags written at compress time tell the
+      decompressor exactly which stages to reverse (rANS → LZSS → Pattern →
+      Unshuffle → Unbitpack).
+    </div>
+
+    <h3 style="margin-top:20px;">Inspect without decompressing</h3>
+    <div class="cblock">
+      <div class="cblock-header"><span>memalgo_api.h</span><span class="pill gray">C API</span></div>
+      <pre>McCellInfo info;
+<span class="fn">memalgo_cell_info</span>(<span class="st">"models/bert-base.cell"</span>, &amp;info);
+
+<span class="fn">printf</span>(<span class="st">"Version  : %u\n"</span>,    info.version);
+<span class="fn">printf</span>(<span class="st">"Orig size: %llu B\n"</span>, info.original_size);
+<span class="fn">printf</span>(<span class="st">"Comp size: %llu B\n"</span>, info.compressed_size);
+<span class="fn">printf</span>(<span class="st">"Ratio    : %.2f\n"</span>,   info.ratio);
+<span class="fn">printf</span>(<span class="st">"CRC32 OK : %s\n"</span>,    info.crc_valid ? <span class="st">"yes"</span> : <span class="st">"CORRUPT"</span>);
+<span class="fn">printf</span>(<span class="st">"Stages   : 0x%02X\n"</span>, info.pipeline_config);
+<span class="c">// bit0=bitpack  bit1=shuffle  bit2=pattern
+// bit3=delta    bit4=lzss     bit5=rans</span></pre>
+    </div>
+  </div>
+
+  <div>
+    <h3>Parallel decompression flow</h3>
+    <div class="load-flow" style="margin-top:8px;">
+      <div class="lf-node io"><div class="ln-t">.cell FILE</div><div class="ln-s">mmap or read</div></div>
+      <div class="lf-vbar"></div>
+      <div class="lf-arrow">↓</div>
+      <div class="lf-vbar"></div>
+      <div class="lf-node"><div class="ln-t">Parse Header</div><div class="ln-s">40 bytes + chunk map</div></div>
+      <div class="lf-vbar"></div>
+      <div class="lf-arrow">↓</div>
+      <div class="lf-vbar"></div>
+      <div class="lf-node"><div class="ln-t">Dispatch Chunks</div><div class="ln-s">unique_count tasks</div></div>
+      <div class="lf-vbar"></div>
+      <div class="lf-arrow">↓</div>
+      <div class="lf-vbar"></div>
+      <div class="lf-threads">
+        <div class="lf-node thread"><div class="ln-t">Thread 0</div><div class="ln-s">rANS→LZ→Pattern→...</div></div>
+        <div class="lf-node thread"><div class="ln-t">Thread 1</div><div class="ln-s">rANS→LZ→Pattern→...</div></div>
+        <div class="lf-node thread"><div class="ln-t">Thread N-1</div><div class="ln-s">rANS→LZ→Pattern→...</div></div>
+      </div>
+      <div class="lf-vbar"></div>
+      <div class="lf-arrow">↓</div>
+      <div class="lf-vbar"></div>
+      <div class="lf-node"><div class="ln-t">Reassemble</div><div class="ln-s">original order</div></div>
+      <div class="lf-vbar"></div>
+      <div class="lf-arrow">↓</div>
+      <div class="lf-vbar"></div>
+      <div class="lf-node io"><div class="ln-t">Model Weights</div><div class="ln-s">ready for inference</div></div>
+    </div>
+    <p style="font-size:12px; color:#6b7280; text-align:center; margin-top:10px;">
+      Each thread owns a slice of unique chunks. Local codec instances — no lock contention.<br>
+      Expected 3–8× speedup vs. single-threaded on files &gt; 16 KB.
+    </p>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══ MODEL REGISTRY ════════════════════════════════════════ -->
+<h2>Model Registry</h2>
+<p>
+  The registry (<code>registry.idx</code>) maps model names → <code>.cell</code> file
+  paths, tracks versions, stores metadata, and supports fast lookup by name.
+</p>
+
+<div class="grid2">
+  <div>
+    <h3>Create &amp; populate</h3>
+    <div class="cblock">
+      <div class="cblock-header"><span>memalgo_api.h</span><span class="pill gray">C API</span></div>
+      <pre><span class="c">// Open (creates if not exists)</span>
+McRegistry* reg = <span class="fn">memalgo_registry_open</span>(
+    <span class="st">"models/registry.idx"</span>
+);
+
+<span class="c">// Register a model: name, path, orig_size, type, version</span>
+<span class="fn">memalgo_registry_add</span>(
+    reg,
+    <span class="st">"bert-base-v1"</span>,
+    <span class="st">"models/bert-base.cell"</span>,
+    original_size,
+    <span class="st">"transformer"</span>,
+    <span class="nm">1</span>
+);
+
+<span class="c">// Register a fine-tuned variant</span>
+<span class="fn">memalgo_registry_add</span>(
+    reg,
+    <span class="st">"bert-sentiment-v2"</span>,
+    <span class="st">"models/bert-sentiment.cell"</span>,
+    ft_size, <span class="st">"transformer"</span>, <span class="nm">2</span>
+);
+
+<span class="fn">memalgo_registry_close</span>(reg);</pre>
+    </div>
+  </div>
+
+  <div>
+    <h3>Look up &amp; list models</h3>
+    <div class="cblock">
+      <div class="cblock-header"><span>memalgo_api.h</span><span class="pill gray">C API</span></div>
+      <pre>McRegistry* reg = <span class="fn">memalgo_registry_open</span>(
+    <span class="st">"models/registry.idx"</span>
+);
+
+<span class="c">// ── Find one model ─────────────────────</span>
+McModelInfo info;
+<span class="kw">int</span> rc = <span class="fn">memalgo_registry_find</span>(
+    reg, <span class="st">"bert-base-v1"</span>, &amp;info
+);
+<span class="kw">if</span> (rc == MC_OK) {
+    <span class="c">// Load directly from registry entry</span>
+    <span class="kw">uint8_t</span> *w; <span class="kw">size_t</span> sz;
+    <span class="fn">memalgo_load_model</span>(info.cell_path, &amp;w, &amp;sz);
+    <span class="fn">engine_load</span>(w, sz);
+    <span class="fn">memalgo_free</span>(w);
+}
+
+<span class="c">// ── List all models ────────────────────</span>
+McModelInfo all[<span class="nm">128</span>]; <span class="kw">size_t</span> count = <span class="nm">0</span>;
+<span class="fn">memalgo_registry_list</span>(reg, all, <span class="nm">128</span>, &amp;count);
+<span class="kw">for</span> (<span class="kw">size_t</span> i = <span class="nm">0</span>; i &lt; count; i++) {
+    <span class="fn">printf</span>(<span class="st">"[%zu] %s v%u  %.1f%% saved\n"</span>,
+        i, all[i].name,
+        all[i].version, all[i].ratio*<span class="nm">100</span>);
+}
+<span class="fn">memalgo_registry_close</span>(reg);</pre>
+    </div>
+  </div>
+</div>
+
+<div class="callout gray">
+  The registry stores <em>paths</em>, not file data. Moving a <code>.cell</code> file
+  without updating the registry returns <code>MC_ERR_NOT_FOUND</code>.
+  Use <code>memalgo_registry_update_path()</code> to fix stale entries.
+</div>
+
+<hr>
+
+<!-- ══ STREAMING ══════════════════════════════════════════════ -->
+<h2>Streaming API — Models Larger Than RAM</h2>
+<p>Feed data in 1 MB chunks — never buffers the full model in memory.</p>
+
+<div class="grid2">
+  <div>
+    <h3>Stream compress (write)</h3>
+    <div class="cblock">
+      <div class="cblock-header"><span>memalgo_api.h</span><span class="pill gray">C API</span></div>
+      <pre>McStream* s = <span class="fn">memalgo_stream_compress_open</span>(
+    <span class="st">"huge_model.cell"</span>, NULL
+);
+
+<span class="kw">while</span> (<span class="fn">has_more_data</span>()) {
+    <span class="kw">uint8_t</span>  chunk[<span class="nm">1024</span> * <span class="nm">1024</span>];
+    <span class="kw">size_t</span>   n = <span class="fn">read_next_chunk</span>(
+                     chunk, <span class="kw">sizeof</span>(chunk));
+
+    <span class="kw">int</span> rc = <span class="fn">memalgo_stream_write</span>(s, chunk, n);
+    <span class="kw">if</span> (rc != MC_OK) {
+        <span class="fn">memalgo_stream_compress_close</span>(s);
+        <span class="kw">return</span> rc;
+    }
+}
+
+<span class="fn">memalgo_stream_compress_close</span>(s);
+<span class="c">// "huge_model.cell" is now complete</span></pre>
+    </div>
+  </div>
+
+  <div>
+    <h3>Stream decompress (read)</h3>
+    <div class="cblock">
+      <div class="cblock-header"><span>memalgo_api.h</span><span class="pill gray">C API</span></div>
+      <pre>McStream* d = <span class="fn">memalgo_stream_decompress_open</span>(
+    <span class="st">"huge_model.cell"</span>
+);
+
+<span class="kw">uint8_t</span> buf[<span class="nm">1024</span> * <span class="nm">1024</span>];
+<span class="kw">size_t</span>  read_len = <span class="nm">0</span>;
+
+<span class="c">// Process layer by layer — no full-model buffer</span>
+<span class="kw">while</span> (
+    <span class="fn">memalgo_stream_read</span>(
+        d, buf, <span class="kw">sizeof</span>(buf), &amp;read_len
+    ) == MC_OK &amp;&amp; read_len &gt; <span class="nm">0</span>
+) {
+    <span class="fn">process_layer</span>(buf, read_len);
+}
+
+<span class="fn">memalgo_stream_decompress_close</span>(d);</pre>
+    </div>
+  </div>
+</div>
+
+<div class="grid3" style="margin-top:12px;">
+  <div class="card">
+    <div class="card-header">Memory usage</div>
+    <div class="card-body" style="font-size:13px;color:#4b5563;">
+      Only one in-flight chunk (1 MB) held in memory at a time, plus fixed-size
+      pipeline buffers per stage. Safe for models larger than available RAM.
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Thread safety</div>
+    <div class="card-body" style="font-size:13px;color:#4b5563;">
+      Each <code>McStream</code> is single-threaded. Open separate streams per
+      thread. The registry supports concurrent reads.
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Integrity</div>
+    <div class="card-body" style="font-size:13px;color:#4b5563;">
+      CRC32 verified per chunk during streaming. A corrupt chunk returns
+      <code>MC_ERR_CRC</code> immediately — no silent corruption.
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══ PERFORMANCE ════════════════════════════════════════════ -->
+<h2>Compression Performance by Model Type</h2>
+
+<div class="grid2">
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Model</th><th>Size</th><th>Expected reduction</th><th>Key stages</th></tr>
+      <tr><td>BERT-base (float32)</td><td>440 MB</td><td><span class="pill green">50–60%</span></td><td>Shuffle + LZ + rANS</td></tr>
+      <tr><td>GPT-2 (float16)</td><td>1.5 GB</td><td><span class="pill green">40–50%</span></td><td>Shuffle + LZ + rANS</td></tr>
+      <tr><td>Stable Diffusion (float16)</td><td>4.0 GB</td><td><span class="pill green">35–45%</span></td><td>Shuffle + LZ + rANS</td></tr>
+      <tr class="hl"><td>LLaMA-7B (GGUF Q4)</td><td>3.8 GB</td><td><span class="pill green">30–40%</span></td><td>BitPack + LZ + rANS</td></tr>
+      <tr><td>LLaMA-7B (GGUF Q8)</td><td>7.2 GB</td><td><span class="pill blue">20–30%</span></td><td>LZ + rANS</td></tr>
+    </table>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Format</th><th>Active stages</th></tr>
+      <tr><td><span class="pill gray">float32</span></td><td style="font-size:12px;">Chunk · Dedup · Shuffle(4) · Pattern · LZSS · rANS</td></tr>
+      <tr><td><span class="pill gray">float16 / bf16</span></td><td style="font-size:12px;">Chunk · Dedup · Shuffle(2) · Pattern · LZSS · rANS</td></tr>
+      <tr><td><span class="pill blue">INT8</span></td><td style="font-size:12px;">Chunk · Dedup · Pattern · LZSS · rANS</td></tr>
+      <tr class="hl"><td><span class="pill green">INT4</span></td><td style="font-size:12px;">Chunk · Dedup · BitPack(4-bit) · LZSS · rANS</td></tr>
+      <tr><td><span class="pill orange">Shared layers</span></td><td style="font-size:12px;">Chunk · <strong>Dedup</strong> (dominant — up to 50× alone)</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="callout blue" style="margin-top:12px;">
+  Byte Shuffle element size is <strong>auto-detected</strong>: 4 for float32, 2 for
+  float16/bfloat16. Detection runs on the first 16 KB and picks the element size
+  with the lowest post-shuffle entropy — no manual configuration required.
+</div>
+
+<hr>
+
+<!-- ══ END-TO-END INTEGRATION ════════════════════════════════ -->
+<h2>End-to-End Integration Pattern</h2>
+<p>Complete workflow from training to serving using MemCell as the model storage layer.</p>
+
+<div class="grid3" style="margin-top:16px;">
+  <div class="step-card">
+    <div class="step-header train">
+      <span>Step 1 · After Training</span>
+      <span class="pill gray">train</span>
+    </div>
+    <div class="step-body">
+      <ul class="bullet-list">
+        <li>Export weights to raw binary buffer</li>
+        <li>Call <code>memalgo_store_model()</code></li>
+        <li>Register with version tag in local registry</li>
+        <li>Upload .cell file (30–60% smaller)</li>
+      </ul>
+      <div class="mini-code">memalgo_store_model(
+  "bert-v3.cell",
+  weights, size, NULL);
+memalgo_registry_add(
+  reg, "bert", "bert-v3.cell",
+  size, "transformer", 3);</div>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header deploy">
+      <span>Step 2 · On Deployment</span>
+      <span class="pill blue">deploy</span>
+    </div>
+    <div class="step-body">
+      <ul class="bullet-list">
+        <li>Download .cell file (smaller transfer)</li>
+        <li>Verify CRC32 with <code>memalgo_cell_info()</code></li>
+        <li>Abort if CRC fails — no silent corruption</li>
+        <li>Register in production registry</li>
+      </ul>
+      <div class="mini-code">McCellInfo info;
+memalgo_cell_info(
+  "bert-v3.cell", &amp;info);
+if (!info.crc_valid)
+  abort_deploy();
+memalgo_registry_add(
+  prod_reg, "bert", ...);</div>
+    </div>
+  </div>
+
+  <div class="step-card">
+    <div class="step-header serve">
+      <span>Step 3 · On Inference</span>
+      <span class="pill green">serve</span>
+    </div>
+    <div class="step-body">
+      <ul class="bullet-list">
+        <li>Look up model in registry by name</li>
+        <li>Load + decompress in parallel (3–8×)</li>
+        <li>Pass weight pointer to inference engine</li>
+        <li>Call <code>memalgo_free()</code> after VRAM copy</li>
+      </ul>
+      <div class="mini-code">McModelInfo m;
+memalgo_registry_find(
+  reg, "bert", &amp;m);
+uint8_t *w; size_t sz;
+memalgo_load_model(
+  m.cell_path, &amp;w, &amp;sz);
+engine_load(w, sz);
+memalgo_free(w);</div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══ ERROR CODES ════════════════════════════════════════════ -->
+<h2>Error Codes &amp; API Quick Reference</h2>
+
+<div class="grid2">
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Code</th><th style="text-align:center;">Value</th><th>Meaning</th></tr>
+      <tr class="hl"><td><code>MC_OK</code></td><td style="text-align:center;"><code>0</code></td><td>Success</td></tr>
+      <tr><td><code>MC_ERR_INVALID</code></td><td style="text-align:center;"><code>1</code></td><td>NULL pointer or bad argument</td></tr>
+      <tr class="hl-red"><td><code>MC_ERR_IO</code></td><td style="text-align:center;"><code>2</code></td><td>File open / read / write failure</td></tr>
+      <tr class="hl-red"><td><code>MC_ERR_FORMAT</code></td><td style="text-align:center;"><code>3</code></td><td>Not a valid .cell file (bad magic)</td></tr>
+      <tr><td><code>MC_ERR_VERSION</code></td><td style="text-align:center;"><code>4</code></td><td>Unsupported format version (&gt; 0x0002)</td></tr>
+      <tr class="hl-red"><td><code>MC_ERR_CRC</code></td><td style="text-align:center;"><code>5</code></td><td>CRC32 mismatch — data corrupted</td></tr>
+      <tr><td><code>MC_ERR_OOM</code></td><td style="text-align:center;"><code>6</code></td><td>Memory allocation failed</td></tr>
+      <tr><td><code>MC_ERR_NOT_FOUND</code></td><td style="text-align:center;"><code>7</code></td><td>Registry: model name not found</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Complete API surface — memalgo_api.h</div>
+    <div class="card-body">
+      <div class="api-grid">
+        <div class="api-item"><span class="pill green" style="flex-shrink:0;">model</span><span class="api-fn">memalgo_compress_stats()</span></div>
+        <div class="api-item"><span class="pill green" style="flex-shrink:0;">model</span><span class="api-fn">memalgo_store_model()</span></div>
+        <div class="api-item"><span class="pill green" style="flex-shrink:0;">model</span><span class="api-fn">memalgo_load_model()</span></div>
+        <div class="api-item"><span class="pill green" style="flex-shrink:0;">model</span><span class="api-fn">memalgo_cell_info()</span></div>
+        <div class="api-item"><span class="pill orange" style="flex-shrink:0;">registry</span><span class="api-fn">memalgo_registry_open()</span></div>
+        <div class="api-item"><span class="pill orange" style="flex-shrink:0;">registry</span><span class="api-fn">memalgo_registry_add()</span></div>
+        <div class="api-item"><span class="pill orange" style="flex-shrink:0;">registry</span><span class="api-fn">memalgo_registry_find()</span></div>
+        <div class="api-item"><span class="pill orange" style="flex-shrink:0;">registry</span><span class="api-fn">memalgo_registry_list()</span></div>
+        <div class="api-item"><span class="pill blue" style="flex-shrink:0;">stream</span><span class="api-fn">memalgo_stream_compress_open()</span></div>
+        <div class="api-item"><span class="pill blue" style="flex-shrink:0;">stream</span><span class="api-fn">memalgo_stream_write()</span></div>
+        <div class="api-item"><span class="pill blue" style="flex-shrink:0;">stream</span><span class="api-fn">memalgo_stream_decompress_open()</span></div>
+        <div class="api-item"><span class="pill blue" style="flex-shrink:0;">stream</span><span class="api-fn">memalgo_stream_read()</span></div>
+        <div class="api-item"><span class="pill gray" style="flex-shrink:0;">memory</span><span class="api-fn">memalgo_free()</span></div>
+        <div class="api-item"><span class="pill gray" style="flex-shrink:0;">memory</span><span class="api-fn">memalgo_decompress()</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══ BUILD & CLI ════════════════════════════════════════════ -->
+<h2>Build &amp; CLI Quick Reference</h2>
+<div class="grid2">
+  <div>
+    <h3>Build</h3>
+    <div class="cblock">
+      <div class="cblock-header"><span>terminal</span><span class="pill gray">Shell</span></div>
+      <pre><span class="c"># Windows (MSYS2 / MinGW)</span>
+build.bat
+
+<span class="c"># Linux / macOS</span>
+make
+
+<span class="c"># CMake (all platforms)</span>
+mkdir build &amp;&amp; cd build
+cmake .. &amp;&amp; make
+
+<span class="c"># Run test suite (39 tests)</span>
+make test</pre>
+    </div>
+  </div>
+  <div>
+    <h3>CLI</h3>
+    <div class="cblock">
+      <div class="cblock-header"><span>terminal</span><span class="pill gray">Shell</span></div>
+      <pre><span class="c"># Analyze: shows entropy + recommended stages</span>
+memalgo analyze  model.bin
+
+<span class="c"># Compress to .cell</span>
+memalgo compress   model.bin -o model.cell -v
+
+<span class="c"># Decompress back to raw bytes</span>
+memalgo decompress model.cell -o model.bin -v
+
+<span class="c"># Inspect .cell metadata (no decompression)</span>
+memalgo info       model.cell</pre>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══ FOOTER ═════════════════════════════════════════════════ -->
+<div class="footer">
+  <span>MemCell v0.2.0 · Algorithm Reference &amp; ML Model Storage Guide · June 2026</span>
+  <span>
+    <span class="pill gray">C++17</span>&nbsp;
+    <span class="pill gray">Zero dependencies</span>&nbsp;
+    <span class="pill green">39 tests passing</span>&nbsp;
+    <span class="pill blue">Open Source</span>
+  </span>
+</div>
+
+</body>
+</html>
