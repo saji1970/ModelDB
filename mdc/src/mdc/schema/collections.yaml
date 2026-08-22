@@ -1,0 +1,33 @@
+# Default MDC collection schema (CLAUDE.md section 9).
+#
+# This is deliberately a separate, simpler surface from the payments
+# domain's normalized tables in data/schema.sql (merchant/account/
+# settlement/...), which the read-only NLP query pipeline (mce/cql)
+# still queries directly for the large synthetic dataset. `merchants`
+# here is the collection real CRUD operations (create/update/delete)
+# go through - see CLAUDE.md section 66's scoping note in
+# docs/ARCHITECTURE.md for why the two aren't merged yet.
+
+merchants:
+  fields:
+    name:
+      datatype: string
+      required: true
+    country:
+      datatype: string
+      required: true
+    currency:
+      datatype: string
+      required: false
+    ledger_balance:
+      datatype: decimal
+      required: false
+    available_balance:
+      datatype: decimal
+      required: false
+    settlement_balance:
+      datatype: decimal
+      required: false
+    status:
+      datatype: string
+      required: false

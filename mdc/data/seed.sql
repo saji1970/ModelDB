@@ -1,0 +1,19 @@
+-- Synthetic payments data (CLAUDE.md section 13) is NOT hand-written here.
+--
+-- Decision (CLAUDE.md section 82 - document ambiguous decisions):
+-- the minimum dev dataset is 10,000 merchants / 50,000 customers /
+-- 100,000 accounts / 500,000 transactions / 100,000 payments /
+-- 100,000 settlements. Hand-writing that many INSERT statements into a
+-- static .sql file is not practical or reviewable, so seed data is
+-- generated deterministically (seed=42) in Python instead:
+--
+--     src/mdc/storage/seed.py   (generation logic, pure stdlib + duckdb)
+--     src/mdc/storage/duckdb_store.py :: DuckDBStore.seed()
+--
+-- Run it with:
+--
+--     python -m mdc db init                 # schema + full-scale seed
+--     python -m mdc db init --scale small    # schema + small seed (fast, used by tests)
+--
+-- Both scales use the same fixed seed=42 RNG stream, so generation is
+-- deterministic and reproducible.

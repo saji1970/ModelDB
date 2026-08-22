@@ -1,0 +1,260 @@
+# Payments domain ontology (CLAUDE.md section 14).
+#
+# Section 15's semantic rule is encoded structurally here: "balance" is
+# listed as an alias under all three balance fields on `merchant`
+# (ledger_balance, available_balance, settlement_balance). A query that
+# only says "balance" therefore resolves to all three with equal
+# confidence -> ambiguous, by construction, with no special-casing in
+# code. A query that says "settlement balance" matches the longer,
+# more specific alias and resolves uniquely.
+#
+# `source_table` records which physical table (see data/schema.sql)
+# actually owns the field, since the entity a user talks about
+# ("merchant") and the table a field lives in ("settlement") often
+# differ - the Phase 4 SQL compiler needs this to know what to JOIN.
+
+merchant:
+  aliases:
+    - merchant
+    - merchants
+    - seller
+    - sellers
+    - business
+    - businesses
+  fields:
+    merchant_name:
+      aliases: [merchant name, business name, name]
+      datatype: string
+      source_table: merchant
+    country:
+      aliases: [country, nation]
+      datatype: string
+      source_table: merchant
+    currency:
+      aliases: [currency]
+      datatype: string
+      source_table: merchant
+    merchant_type:
+      aliases: [merchant type, business type, type]
+      datatype: string
+      source_table: merchant
+    status:
+      aliases: [status]
+      datatype: string
+      source_table: merchant
+    ledger_balance:
+      aliases: [ledger balance, book balance, balance]
+      datatype: decimal
+      source_table: account
+    available_balance:
+      aliases: [available balance, usable balance, balance]
+      datatype: decimal
+      source_table: account
+    settlement_balance:
+      aliases: [settlement balance, settlement amount pending, pending settlement, balance]
+      datatype: decimal
+      source_table: settlement
+    settlement_status:
+      aliases: [settlement status]
+      datatype: string
+      source_table: settlement
+
+customer:
+  aliases:
+    - customer
+    - customers
+    - client
+    - clients
+    - buyer
+    - buyers
+  fields:
+    customer_name:
+      aliases: [customer name, name]
+      datatype: string
+      source_table: customer
+    country:
+      aliases: [country, nation]
+      datatype: string
+      source_table: customer
+    email:
+      aliases: [email, email address]
+      datatype: string
+      source_table: customer
+    status:
+      aliases: [status]
+      datatype: string
+      source_table: customer
+
+account:
+  aliases:
+    - account
+    - accounts
+  fields:
+    ledger_balance:
+      aliases: [ledger balance, book balance, balance]
+      datatype: decimal
+      source_table: account
+    available_balance:
+      aliases: [available balance, usable balance, balance]
+      datatype: decimal
+      source_table: account
+    currency:
+      aliases: [currency]
+      datatype: string
+      source_table: account
+    status:
+      aliases: [status]
+      datatype: string
+      source_table: account
+
+transaction:
+  aliases:
+    - transaction
+    - transactions
+    - txn
+    - txns
+  fields:
+    transaction_type:
+      aliases: [transaction type, type]
+      datatype: string
+      source_table: transaction
+    amount:
+      aliases: [amount, value]
+      datatype: decimal
+      source_table: transaction
+    currency:
+      aliases: [currency]
+      datatype: string
+      source_table: transaction
+    status:
+      aliases: [status]
+      datatype: string
+      source_table: transaction
+    transaction_date:
+      aliases: [transaction date, date]
+      datatype: date
+      source_table: transaction
+
+payment:
+  aliases:
+    - payment
+    - payments
+  fields:
+    amount:
+      aliases: [amount, value]
+      datatype: decimal
+      source_table: payment
+    currency:
+      aliases: [currency]
+      datatype: string
+      source_table: payment
+    payment_status:
+      aliases: [payment status, status]
+      datatype: string
+      source_table: payment
+    payment_date:
+      aliases: [payment date, date]
+      datatype: date
+      source_table: payment
+
+settlement:
+  aliases:
+    - settlement
+    - settlements
+  fields:
+    settlement_amount:
+      aliases: [settlement amount, amount]
+      datatype: decimal
+      source_table: settlement
+    settlement_balance:
+      aliases: [settlement balance, pending settlement, balance]
+      datatype: decimal
+      source_table: settlement
+    currency:
+      aliases: [currency]
+      datatype: string
+      source_table: settlement
+    settlement_status:
+      aliases: [settlement status, status]
+      datatype: string
+      source_table: settlement
+    settlement_date:
+      aliases: [settlement date, date]
+      datatype: date
+      source_table: settlement
+
+refund:
+  aliases:
+    - refund
+    - refunds
+  fields:
+    amount:
+      aliases: [amount, value]
+      datatype: decimal
+      source_table: refund
+    currency:
+      aliases: [currency]
+      datatype: string
+      source_table: refund
+    refund_status:
+      aliases: [refund status, status]
+      datatype: string
+      source_table: refund
+    refund_date:
+      aliases: [refund date, date]
+      datatype: date
+      source_table: refund
+
+chargeback:
+  aliases:
+    - chargeback
+    - chargebacks
+  fields:
+    amount:
+      aliases: [amount, value]
+      datatype: decimal
+      source_table: chargeback
+    currency:
+      aliases: [currency]
+      datatype: string
+      source_table: chargeback
+    chargeback_status:
+      aliases: [chargeback status, status]
+      datatype: string
+      source_table: chargeback
+    chargeback_date:
+      aliases: [chargeback date, date]
+      datatype: date
+      source_table: chargeback
+
+card:
+  aliases:
+    - card
+    - cards
+  fields:
+    card_brand:
+      aliases: [card brand, brand]
+      datatype: string
+      source_table: card
+    last_four:
+      aliases: [last four, last 4 digits]
+      datatype: string
+      source_table: card
+    status:
+      aliases: [status]
+      datatype: string
+      source_table: card
+
+terminal:
+  aliases:
+    - terminal
+    - terminals
+  fields:
+    terminal_type:
+      aliases: [terminal type, type]
+      datatype: string
+      source_table: terminal
+    status:
+      aliases: [status]
+      datatype: string
+      source_table: terminal

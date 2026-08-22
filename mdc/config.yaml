@@ -1,0 +1,19 @@
+llm:
+  provider: mock
+
+database:
+  path: data/mdc.duckdb
+
+confidence:
+  read_threshold: 0.90
+  high_risk_threshold: 0.99
+  ambiguity_margin: 0.15
+
+dna:
+  max_homopolymer: 3
+  min_gc: 0.40
+  max_gc: 0.60
+
+seed:
+  value: 42
+  scale: full
