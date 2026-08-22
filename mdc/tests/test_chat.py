@@ -9,20 +9,26 @@ import pytest
 
 from mdc.api.chat import ChatEngine
 from mdc.api.service import ObjectService
+from mdc.databases.manager import DatabaseManager
+from mdc.schema.loader import load_default_registry
 from mdc.storage.duckdb_store import DuckDBStore
-from mdc.storage_intelligence.router import build_default_router
 
 
 @pytest.fixture
-def service(tmp_path: Path) -> ObjectService:
+def manager(tmp_path: Path) -> DatabaseManager:
     store = DuckDBStore(tmp_path / "mdc.duckdb")
     store.init_schema()
-    return ObjectService(build_default_router(store))
+    return DatabaseManager(tmp_path / "databases", store, load_default_registry())
 
 
 @pytest.fixture
-def chat(service: ObjectService) -> ChatEngine:
-    return ChatEngine(service)
+def service(manager: DatabaseManager) -> ObjectService:
+    return manager.get("default").object_service
+
+
+@pytest.fixture
+def chat(manager: DatabaseManager) -> ChatEngine:
+    return ChatEngine(manager)
 
 
 def test_list_by_type(chat: ChatEngine, service: ObjectService):

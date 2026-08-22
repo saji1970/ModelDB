@@ -58,14 +58,15 @@ def serve(
     import uvicorn
 
     from mdc.api.app import create_app
-    from mdc.storage_intelligence.router import build_default_router
+    from mdc.databases.manager import DatabaseManager
+    from mdc.schema.loader import load_default_registry
 
     console = Console()
     database.parent.mkdir(parents=True, exist_ok=True)
     store = DuckDBStore(database)
     store.init_schema()
-    router = build_default_router(store)
-    web_app = create_app(router)
+    manager = DatabaseManager(database.parent / "databases", store, load_default_registry())
+    web_app = create_app(manager)
 
     console.print(f"MDC Storage Explorer: http://{host}:{port}")
     uvicorn.run(web_app, host=host, port=port)

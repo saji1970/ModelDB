@@ -20,11 +20,14 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from mdc.api.chat import ChatEngine
-from mdc.api.service import ObjectService
 from mdc.classification.data_type import DataType
+from mdc.databases.errors import DatabaseAlreadyExistsError, DatabaseNotFoundError, InvalidDatabaseNameError
+from mdc.databases.manager import DatabaseManager, DEFAULT_DATABASE
+from mdc.model.operation import ReadOperation
 from mdc.models.errors import ModelNotFoundError, TensorNotFoundError
+from mdc.schema.registry import CollectionNotFoundError
 from mdc.storage_intelligence.analyzer import AccessProfile
-from mdc.storage_intelligence.router import DataIntegrityError, ObjectNotFoundError, StorageRouter
+from mdc.storage_intelligence.router import DataIntegrityError, ObjectNotFoundError
 from mdc.storage_intelligence.strategy import StorageTier
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -39,6 +42,10 @@ class ChatRequest(BaseModel):
     session_id: str = "default"
 
 
+class CreateDatabaseRequest(BaseModel):
+    name: str
+
+
 class OptimizeRequest(BaseModel):
     # No automatic access tracking exists anywhere in this system (Phase
     # C onward never recorded real read/write history) - re-tiering
@@ -50,9 +57,14 @@ class OptimizeRequest(BaseModel):
     mutation_frequency: float = 0.0
 
 
-def create_app(router: StorageRouter) -> FastAPI:
-    service = ObjectService(router)
-    chat_engine = ChatEngine(service)
+def create_app(manager: DatabaseManager) -> FastAPI:
+    # /objects, /models, and /chat's default session all operate on the
+    # DEFAULT database for backward compatibility - `POST /databases` and
+    # the chat panel are how a caller reaches any other one (chat is
+    # database-aware per-session via `state.current_database`; see
+    # `conversation.interpreter`'s module docstring).
+    service = manager.get(DEFAULT_DATABASE).object_service
+    chat_engine = ChatEngine(manager)
     app = FastAPI(title="MDC Universal Object API")
 
     def _not_found(exc: Exception) -> HTTPException:
@@ -61,6 +73,65 @@ def create_app(router: StorageRouter) -> FastAPI:
     @app.get("/")
     def browser_ui() -> FileResponse:
         return FileResponse(_STATIC_DIR / "index.html")
+
+    @app.get("/databases")
+    def list_databases() -> dict[str, Any]:
+        return {"databases": manager.list_names()}
+
+    @app.post("/databases", status_code=201)
+    def create_database(body: CreateDatabaseRequest) -> dict[str, Any]:
+        try:
+            manager.create(body.name)
+        except (DatabaseAlreadyExistsError, InvalidDatabaseNameError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"name": body.name}
+
+    @app.get("/databases/{name}/tables")
+    def list_database_tables(name: str) -> dict[str, Any]:
+        try:
+            handle = manager.get(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+        tables = handle.schema_registry.list_collections()
+        return {
+            "database": name,
+            "tables": [
+                {"name": t, "fields": len(handle.schema_registry.get_collection(t).fields)} for t in tables
+            ],
+        }
+
+    @app.get("/databases/{name}/tables/{table}")
+    def get_database_table(name: str, table: str) -> dict[str, Any]:
+        try:
+            handle = manager.get(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+        try:
+            collection = handle.schema_registry.get_collection(table)
+        except CollectionNotFoundError as exc:
+            raise _not_found(exc) from exc
+        return {
+            "database": name,
+            "table": table,
+            "fields": [{"name": f.name, "type": f.datatype, "required": f.required} for f in collection.fields.values()],
+        }
+
+    @app.get("/databases/{name}/tables/{table}/rows")
+    def get_database_table_rows(name: str, table: str) -> dict[str, Any]:
+        try:
+            handle = manager.get(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+        try:
+            result = handle.engine.read(ReadOperation(collection=table, filters=[]))
+        except CollectionNotFoundError as exc:
+            raise _not_found(exc) from exc
+        return {
+            "database": name,
+            "table": table,
+            "rows": [{"record_id": record.record_id, **record.fields} for record in result.records],
+            "count": result.count,
+        }
 
     @app.get("/objects")
     def list_objects(type: str | None = None, tier: str | None = None) -> dict[str, Any]:

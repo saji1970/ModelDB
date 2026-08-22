@@ -25,11 +25,11 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from mdc.api.service import ObjectService
 from mdc.conversation.interpreter import process_turn as process_storage_turn
 from mdc.conversation.state import StorageConversationState
 from mdc.cql.dialogue import format_question, format_unresolved
 from mdc.cql.interpreter import process_turn
+from mdc.databases.manager import DatabaseManager
 from mdc.engine.base import DataEngine, OperationResult
 from mdc.engine.data_engine import MDCDataEngine
 from mdc.llm.interface import LLMProvider
@@ -40,7 +40,6 @@ from mdc.ontology.loader import load_ontology
 from mdc.ontology.ontology import Ontology
 from mdc.schema.loader import load_default_registry
 from mdc.storage.duckdb_store import DuckDBStore
-from mdc.storage_intelligence.router import build_default_router
 
 BANNER = (
     "Molecular Data Center\n"
@@ -71,6 +70,14 @@ Storage examples:
   list images
   search for revenue
 
+Database examples:
+  create database mytest
+  use database mytest
+  list databases
+  create table products with sku string, name string, price decimal
+  show data in products
+  insert into products sku=ABC123, name=Widget, price=9.99
+
 Commands:
   /help
   /context
@@ -97,10 +104,12 @@ def _default_engine() -> DataEngine:
     return MDCDataEngine(store, load_default_registry())
 
 
-def _default_object_service() -> ObjectService:
+def _default_manager() -> DatabaseManager:
+    import tempfile
+
     store = DuckDBStore(":memory:")
     store.init_schema()
-    return ObjectService(build_default_router(store))
+    return DatabaseManager(Path(tempfile.mkdtemp()) / "databases", store, load_default_registry())
 
 
 @dataclass
@@ -112,7 +121,7 @@ class ShellState:
     llm: LLMProvider = field(default_factory=MockLLMProvider)
     engine: DataEngine = field(default_factory=_default_engine)
     conversation: ConversationState = field(default_factory=ConversationState)
-    object_service: ObjectService = field(default_factory=_default_object_service)
+    manager: DatabaseManager = field(default_factory=_default_manager)
     storage_conversation: StorageConversationState = field(default_factory=StorageConversationState)
 
 
@@ -213,7 +222,7 @@ def _print_object_rows(console: Console, rows: list) -> None:
 def handle_query(state: ShellState, console: Console, line: str) -> None:
     state.history.append(line)
 
-    storage_result = process_storage_turn(state.storage_conversation, line, state.object_service, read_file=Path.read_bytes)
+    storage_result = process_storage_turn(state.storage_conversation, line, state.manager, read_file=Path.read_bytes)
     if storage_result is not None:
         console.print(storage_result.message)
         if isinstance(storage_result.data, list):
@@ -257,11 +266,12 @@ def run_shell(store: DuckDBStore, console: Console | None = None) -> None:
     console.print(BANNER)
     state = ShellState(
         engine=MDCDataEngine(store, load_default_registry()),
-        object_service=ObjectService(build_default_router(store)),
+        manager=DatabaseManager(store.path.parent / "databases", store, load_default_registry()),
     )
     while state.running:
+        prompt = "mdc> " if state.storage_conversation.current_database == "default" else f"mdc[{state.storage_conversation.current_database}]> "
         try:
-            line = console.input("mdc> ")
+            line = console.input(prompt)
         except (EOFError, KeyboardInterrupt):
             break
         process_line(state, console, line)

@@ -11,8 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mdc.api.app import create_app
+from mdc.databases.manager import DatabaseManager
+from mdc.schema.loader import load_default_registry
 from mdc.storage.duckdb_store import DuckDBStore
-from mdc.storage_intelligence.router import build_default_router
 
 
 def _png(width: int, height: int) -> bytes:
@@ -35,8 +36,8 @@ def _safetensors(tensors: dict[str, tuple[list[int], bytes]]) -> bytes:
 def client(tmp_path: Path) -> TestClient:
     store = DuckDBStore(tmp_path / "mdc.duckdb")
     store.init_schema()
-    router = build_default_router(store)
-    return TestClient(create_app(router))
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    return TestClient(create_app(manager))
 
 
 # -- section 48 required tests: upload / retrieve / delete, now over HTTP -------
@@ -241,6 +242,56 @@ def test_chat_endpoint_delete_confirmation_flow(client: TestClient):
     confirm = client.post("/chat", json={"message": "yes", "session_id": "http-session"})
     assert "deleted" in confirm.json()["message"].lower()
     assert client.get(f"/objects/{object_id}").status_code == 404
+
+
+# -- browsing a non-default database's tables/rows over HTTP --------------------
+
+def test_list_databases_endpoint(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    names = client.get("/databases").json()["databases"]
+    assert "default" in names
+    assert "mytest" in names
+
+
+def test_create_database_endpoint_rejects_duplicate(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    duplicate = client.post("/databases", json={"name": "mytest"})
+    assert duplicate.status_code == 409
+
+
+def test_database_tables_endpoint_is_empty_for_a_fresh_database(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    tables = client.get("/databases/mytest/tables").json()["tables"]
+    assert tables == []
+
+
+def test_database_tables_endpoint_unknown_database_404s(client: TestClient):
+    assert client.get("/databases/nope/tables").status_code == 404
+
+
+def test_browse_a_table_created_and_populated_via_chat(client: TestClient):
+    session_id = "browse-session"
+    client.post("/databases", json={"name": "mytest"})
+    client.post("/chat", json={"message": "use database mytest", "session_id": session_id})
+    client.post("/chat", json={"message": "create table products with sku string, price decimal", "session_id": session_id})
+    client.post("/chat", json={"message": "insert into products sku=ABC123, price=9.99", "session_id": session_id})
+
+    tables = client.get("/databases/mytest/tables").json()["tables"]
+    assert tables == [{"name": "products", "fields": 2}]
+
+    table = client.get("/databases/mytest/tables/products").json()
+    field_names = {f["name"] for f in table["fields"]}
+    assert field_names == {"sku", "price"}
+
+    rows = client.get("/databases/mytest/tables/products/rows").json()
+    assert rows["count"] == 1
+    assert rows["rows"][0]["sku"] == "ABC123"
+
+
+def test_table_endpoints_unknown_table_404(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    assert client.get("/databases/mytest/tables/nope").status_code == 404
+    assert client.get("/databases/mytest/tables/nope/rows").status_code == 404
 
 
 # -- the exact concurrency shape that exposed the DuckDBStore threading bug -----

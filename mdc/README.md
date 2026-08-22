@@ -222,6 +222,58 @@ transports, per `read_file` being the only thing that differs (the CLI
 can read local files for `store <path>`; the browser-facing chat cannot,
 by design - see the module's docstring).
 
+## Multiple databases
+
+MDC is not limited to one database. `DatabaseManager` (`databases/manager.py`)
+creates and caches any number of independently-stored named databases on
+demand - each gets its own DuckDB file, schema registry, and object index,
+fully isolated from every other one. There is no hardcoded limit on how many
+you can have.
+
+You can create a database, add tables (schema-registry collections, never raw
+SQL), and browse/insert data entirely from the chat prompt or the `mdc>`
+shell - a third NLP layer (`nlp/db_command.py`, `conversation/
+db_interpreter.py`) kept deliberately separate from both the merchants-CRUD
+and object-storage vocabularies above, so "table"/"database" keywords never
+collide with "show all merchants" or "archive it":
+
+```
+mdc> create database mytest
+Created database "mytest" and switched to it. It starts empty - use "create table ..." to add one.
+
+mdc[mytest]> create table products with sku string, name string, price decimal
+Created table "products" in "mytest" with fields: sku (string), name (string), price (decimal).
+
+mdc[mytest]> insert into products sku=ABC123, name=Widget, price=9.99
+Inserted <record_id> into "products".
+
+mdc[mytest]> show data in products
+1 row(s) in "products".
+
+mdc[mytest]> describe database
+1 table(s) in "mytest": products.
+
+mdc[mytest]> describe table products
+3 field(s).
+
+mdc[mytest]> list databases
+2 database(s): default, mytest. Current: mytest.
+
+mdc[mytest]> use database default
+Switched to database "default".
+```
+
+The same commands work through the Storage Explorer's chat panel
+(`POST /chat`) and the REST API (`GET /databases`, `POST /databases`); each
+chat session tracks its own `current_database` independently, so switching
+databases in one browser tab never affects another session. Switching
+databases resets that session's object pronoun ("it") and any pending delete
+confirmation, since they'd otherwise silently resolve against the wrong
+database. Merchants CRUD/analytics natural language ("Show all merchants",
+"Create a merchant called...") intentionally always stays bound to the
+original `default` database regardless of which database the session has
+switched to - see `conversation/interpreter.py`'s module docstring for why.
+
 ## Testing
 
 ```bash

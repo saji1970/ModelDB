@@ -5,4 +5,5 @@ __pycache__/
 *.egg-info/
 data/*.duckdb
 data/*.duckdb.wal
+data/databases/
 .env

@@ -4,27 +4,39 @@ system, as opposed to `api.chat`'s original stateless slice (which now
 delegates here; see its module docstring).
 
 `process_turn` is the single place STORE/RETRIEVE/ARCHIVE/RESTORE/
-OPTIMIZE/MOVE/DELETE/SEARCH/INSPECT/DESCRIBE actually execute against
-`ObjectService` - callers (the CLI shell, the HTTP chat endpoint) just
-supply text and get back a message. `read_file` is deliberately
-optional and CLI-only: letting a remote HTTP caller ask this process to
-read an arbitrary local path would be a path-traversal-shaped hole, so
-the HTTP-facing caller never wires it, and STORE-by-path there degrades
-to a clear "use the Upload button" message instead of silently trying
-(or silently failing) a filesystem read for someone who never should
-have gotten one.
+OPTIMIZE/MOVE/DELETE/SEARCH/INSPECT/DESCRIBE actually execute, plus
+database/table administration (`conversation.db_interpreter`, tried
+first - see its module docstring for why) - callers (the CLI shell,
+the HTTP chat endpoint) just supply text and get back a message. Every
+turn resolves `state.current_database` through a `DatabaseManager`
+fresh, so switching databases (`create database`/`use database`)
+immediately redirects every subsequent object-storage command without
+callers needing to do anything - the merchants-CRUD interpreter
+(`cql.interpreter`) is a deliberate exception and always stays on the
+original default database (see `cli.shell`'s module docstring for why
+the two conversations don't share this).
+
+`read_file` is deliberately optional and CLI-only: letting a remote
+HTTP caller ask this process to read an arbitrary local path would be
+a path-traversal-shaped hole, so the HTTP-facing caller never wires
+it, and STORE-by-path there degrades to a clear "use the Upload
+button" message instead of silently trying (or silently failing) a
+filesystem read for someone who never should have gotten one.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from mdc.api.service import ObjectService
+from mdc.conversation.db_interpreter import handle_database_command
+from mdc.conversation.result import TurnResult
 from mdc.conversation.state import StorageConversationState
+from mdc.databases.manager import DatabaseManager
 from mdc.models.errors import ModelNotFoundError, TensorNotFoundError
 from mdc.nlp.command import PRONOUNS, TYPE_WORDS, StorageCommand, parse_storage_command
+from mdc.nlp.db_command import parse_database_command
 from mdc.nlp.intent import StorageIntent
 from mdc.nlp.preference import OptimizationPreference, extract_preference
 from mdc.storage_intelligence.analyzer import AccessProfile
@@ -35,20 +47,21 @@ from mdc.storage_intelligence.strategy import StorageTier
 ReadFile = Callable[[Path], bytes]
 _TEXTLIKE_TYPES = {"TEXT", "DOCUMENT", "LOG", "TABULAR", "DATABASE_RECORD", "TIME_SERIES"}
 
-
-@dataclass(frozen=True)
-class TurnResult:
-    message: str
-    data: Any = None
+__all__ = ["TurnResult", "process_turn"]
 
 
 def process_turn(
-    state: "StorageConversationState", text: str, service: "ObjectService", *, read_file: ReadFile | None = None
+    state: "StorageConversationState", text: str, manager: "DatabaseManager", *, read_file: ReadFile | None = None
 ) -> TurnResult | None:
     stripped = text.strip()
+    service = manager.get(state.current_database).object_service
 
     if state.pending_delete is not None:
         return _resolve_delete_confirmation(state, stripped, service)
+
+    db_command = parse_database_command(stripped)
+    if db_command is not None:
+        return handle_database_command(state, manager, db_command)
 
     command = parse_storage_command(stripped)
     if command is None:

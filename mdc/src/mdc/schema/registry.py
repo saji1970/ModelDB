@@ -72,11 +72,36 @@ class SchemaRegistry:
     def has_collection(self, name: str) -> bool:
         return name in self._collections
 
+    def list_collections(self) -> list[str]:
+        return sorted(self._collections)
+
     def add_field(self, collection: str, field_schema: FieldSchema) -> None:
         self.get_collection(collection).fields[field_schema.name] = field_schema
 
     def remove_field(self, collection: str, field_name: str) -> None:
         self.get_collection(collection).fields.pop(field_name, None)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            name: {
+                "fields": {
+                    field_name: {"datatype": f.datatype, "required": f.required}
+                    for field_name, f in collection.fields.items()
+                }
+            }
+            for name, collection in self._collections.items()
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SchemaRegistry":
+        registry = cls()
+        for name, collection in data.items():
+            fields = {
+                field_name: FieldSchema(name=field_name, datatype=info["datatype"], required=info.get("required", False))
+                for field_name, info in collection.get("fields", {}).items()
+            }
+            registry.create_collection(name, fields)
+        return registry
 
     def validate_record(self, collection: str, data: dict[str, Any], *, partial: bool = False) -> dict[str, Any]:
         """Coerce `data` to the collection's declared datatypes and check

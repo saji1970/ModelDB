@@ -69,6 +69,50 @@ Unifying the two - or migrating the payments dataset itself onto the
 generic collection model - is future work, not a defect in the current
 scope.
 
+## Multiple databases and the three-way NLP dispatch
+
+`DatabaseManager` (`databases/manager.py`) replaces the single implicit
+database with any number of independently-stored, named ones. Each is a
+fully isolated `DatabaseHandle`: its own `DuckDBStore` file, `SchemaRegistry`,
+`MDCDataEngine`, `StorageRouter`, and `ObjectService`. Databases are created
+lazily and cached by name; there is no hardcoded limit. User-supplied names
+are validated against a strict pattern (`^[A-Za-z][A-Za-z0-9_-]{0,62}$`)
+*before* any path is constructed from them, since a name becomes part of a
+filesystem path (`databases/<name>.duckdb`) - the usual path-traversal
+boundary for user-controlled filenames.
+
+Free-text input entering `conversation.interpreter.process_turn()` is tried
+against three separate parsers, in order, each anchored-regex rather than
+keyword-scored so their vocabularies never collide even though they share
+surface words like "show":
+
+```
+text
+  |
+  v
+nlp.db_command.parse_database_command()   <- "create database", "create table",
+  |  (matched -> conversation.db_interpreter)  "show data in", "insert into" ...
+  v (no match)
+nlp.command.parse_storage_command()       <- "archive it", "store <path>",
+  |  (matched -> conversation.interpreter's own handlers)  "describe it" ...
+  v (no match)
+falls through to cql.interpreter.process_turn()  <- merchants CRUD/analytics
+```
+
+`db_interpreter` handlers only ever call `SchemaRegistry.create_collection()`
+with a validated typed field list to create a table - never raw SQL DDL, kept
+to the same "no LLM-authored SQL" rule as the rest of the system (CLAUDE.md
+section 3). Each conversational session tracks its own
+`StorageConversationState.current_database`; switching it resets that
+session's "it" pronoun and any pending delete confirmation, since both would
+otherwise resolve against the wrong database's object index. The merchants
+CRUD/analytics natural language is deliberately *not* database-aware - it
+always targets the original `default` database's `merchants` collection
+regardless of what the session has switched to, since generalizing that
+already-stable, older system was judged out of scope for this change; the
+database/table administration commands above give equivalent power for any
+collection in any database via explicit phrasing instead.
+
 ## Storage abstraction
 
 `StorageBackend` (`storage/interface.py`) is block-addressed

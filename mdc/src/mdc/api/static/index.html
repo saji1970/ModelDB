@@ -156,12 +156,15 @@
 
       <div class="nav-heading">By Tier</div>
       <div id="tier-nav"></div>
+
+      <div class="nav-heading">Databases</div>
+      <div id="db-nav"></div>
     </div>
 
     <div id="center">
       <div id="list-wrap">
         <table>
-          <thead>
+          <thead id="list-head">
             <tr>
               <th>Object</th><th>Type</th><th>Tier</th><th>Representation</th>
               <th>Compression</th><th>Size</th>
@@ -203,6 +206,18 @@ let currentObjects = [];
 let selectedId = null;
 const sessionId = "explorer-" + Math.random().toString(36).slice(2, 10);
 
+// viewMode: "objects" (default DB's polymorphic object store, existing
+// Phase I/J behavior) | "tables" (a database's SchemaRegistry collections,
+// via the new /databases/{name}/tables endpoints) | "rows" (one table's data).
+let viewMode = "objects";
+let currentDb = null;
+let currentTable = null;
+let currentDatabases = [];
+let currentTables = [];
+let currentRows = [];
+let selectedTable = null;
+let selectedRowIndex = null;
+
 function iconFor(type) { return ICONS[type] || "📁"; }
 
 function fmtSize(bytes) {
@@ -222,16 +237,85 @@ function buildSidebar() {
     `<div class="nav-item" data-tier="${t}"><span class="icon">${t === "HOT" ? "🔥" : t === "ARCHIVE" ? "🧬" : "💽"}</span><span>${t}</span></div>`
   ).join("");
 
-  document.querySelectorAll(".nav-item").forEach(el => {
+  document.querySelectorAll("#sidebar .nav-item[data-type], #sidebar .nav-item[data-tier], #sidebar .nav-item:not([data-type]):not([data-tier]):not([data-db])").forEach(el => {
     el.addEventListener("click", () => {
-      document.querySelectorAll(".nav-item").forEach(e => e.classList.remove("active"));
-      el.classList.add("active");
+      setActiveNav(el);
+      viewMode = "objects";
+      currentDb = null;
+      currentTable = null;
       currentFilter = { type: el.dataset.type || null, tier: el.dataset.tier || null };
       document.getElementById("current-path").textContent =
         el.dataset.type ? "Type / " + el.dataset.type : el.dataset.tier ? "Tier / " + el.dataset.tier : "All Objects";
+      resetDetails();
       loadObjects();
     });
   });
+
+  loadDatabaseNav();
+}
+
+function setActiveNav(el) {
+  document.querySelectorAll(".nav-item").forEach(e => e.classList.remove("active"));
+  el.classList.add("active");
+}
+
+async function loadDatabaseNav() {
+  const res = await fetch("/databases");
+  const data = await res.json();
+  currentDatabases = data.databases;
+  const dbNav = document.getElementById("db-nav");
+  dbNav.innerHTML = data.databases.map(name =>
+    `<div class="nav-item" data-db="${name}"><span class="icon">🗄️</span><span>${name}</span></div>`
+  ).join("");
+  dbNav.querySelectorAll(".nav-item").forEach(el => {
+    if ((viewMode === "tables" || viewMode === "rows") && el.dataset.db === currentDb) {
+      setActiveNav(el);
+    }
+    el.addEventListener("click", () => {
+      setActiveNav(el);
+      openDatabase(el.dataset.db);
+    });
+  });
+
+  if (viewMode === "objects") renderList();
+}
+
+function openDatabase(name) {
+  viewMode = "tables";
+  currentDb = name;
+  currentTable = null;
+  document.getElementById("current-path").textContent = "Database / " + name;
+  resetDetails();
+  loadTables();
+}
+
+async function loadTables() {
+  const res = await fetch(`/databases/${encodeURIComponent(currentDb)}/tables`);
+  const data = await res.json();
+  currentTables = data.tables;
+  renderList();
+}
+
+function openTable(name) {
+  viewMode = "rows";
+  currentTable = name;
+  document.getElementById("current-path").textContent = "Database / " + currentDb + " / " + name;
+  resetDetails();
+  loadRows();
+}
+
+async function loadRows() {
+  const res = await fetch(`/databases/${encodeURIComponent(currentDb)}/tables/${encodeURIComponent(currentTable)}/rows`);
+  const data = await res.json();
+  currentRows = data.rows;
+  renderList();
+}
+
+function resetDetails() {
+  selectedId = null;
+  selectedTable = null;
+  selectedRowIndex = null;
+  document.getElementById("details").innerHTML = `<div id="details-placeholder">Select an item to see its details.</div>`;
 }
 
 async function loadObjects() {
@@ -249,15 +333,43 @@ async function loadObjects() {
 }
 
 function renderList() {
+  if (viewMode === "tables") return renderTablesList();
+  if (viewMode === "rows") return renderRowsList();
+  return renderObjectsList();
+}
+
+function renderObjectsList() {
+  document.getElementById("list-head").innerHTML =
+    `<tr><th>Object</th><th>Type</th><th>Tier</th><th>Representation</th><th>Compression</th><th>Size</th></tr>`;
   const body = document.getElementById("list-body");
   const empty = document.getElementById("empty-state");
-  if (currentObjects.length === 0) {
+
+  // Databases show up as browsable rows here too, not just in the
+  // sidebar - only at the unfiltered root, the same way a file browser
+  // shows folders only at the top of a listing, not inside a type/tier
+  // filter view.
+  const atRoot = !currentFilter.type && !currentFilter.tier;
+  const databaseRows = atRoot ? currentDatabases : [];
+
+  if (currentObjects.length === 0 && databaseRows.length === 0) {
     body.innerHTML = "";
+    empty.textContent = "No objects here yet. Upload something, or ask the chat to store one.";
     empty.style.display = "block";
     return;
   }
   empty.style.display = "none";
-  body.innerHTML = currentObjects.map(obj => `
+
+  const dbHtml = databaseRows.map(name => `
+    <tr data-db="${name}">
+      <td>🗄️ <span class="mono">${name}</span></td>
+      <td>DATABASE</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  `).join("");
+  const objectHtml = currentObjects.map(obj => `
     <tr data-id="${obj.object_id}" class="${obj.object_id === selectedId ? 'selected' : ''}">
       <td>${iconFor(obj.type)} <span class="mono">${obj.object_id}</span></td>
       <td>${obj.type}</td>
@@ -267,10 +379,93 @@ function renderList() {
       <td>${fmtSize(obj.size)}</td>
     </tr>
   `).join("");
+  body.innerHTML = dbHtml + objectHtml;
 
-  body.querySelectorAll("tr").forEach(row => {
+  body.querySelectorAll("tr[data-db]").forEach(row => {
+    row.addEventListener("click", () => {
+      const navItem = document.querySelector(`#db-nav .nav-item[data-db="${row.dataset.db}"]`);
+      if (navItem) setActiveNav(navItem);
+      openDatabase(row.dataset.db);
+    });
+  });
+  body.querySelectorAll("tr[data-id]").forEach(row => {
     row.addEventListener("click", () => selectObject(row.dataset.id));
   });
+}
+
+function renderTablesList() {
+  document.getElementById("list-head").innerHTML = `<tr><th>Table</th><th>Fields</th></tr>`;
+  const body = document.getElementById("list-body");
+  const empty = document.getElementById("empty-state");
+  if (currentTables.length === 0) {
+    body.innerHTML = "";
+    empty.textContent = `"${currentDb}" has no tables yet. Ask the chat: create table <name> with <field> <type>, ...`;
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+  body.innerHTML = currentTables.map(t => `
+    <tr data-table="${t.name}" class="${t.name === selectedTable ? 'selected' : ''}">
+      <td>📋 <span class="mono">${t.name}</span></td>
+      <td>${t.fields}</td>
+    </tr>
+  `).join("");
+
+  body.querySelectorAll("tr").forEach(row => {
+    row.addEventListener("click", () => selectTable(row.dataset.table));
+  });
+}
+
+function renderRowsList() {
+  const cols = currentRows.length > 0 ? Object.keys(currentRows[0]) : ["record_id"];
+  document.getElementById("list-head").innerHTML =
+    `<tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr>`;
+  const body = document.getElementById("list-body");
+  const empty = document.getElementById("empty-state");
+  if (currentRows.length === 0) {
+    body.innerHTML = "";
+    empty.textContent = `No rows in "${currentTable}" yet. Ask the chat: insert into ${currentTable} <field>=<value>, ...`;
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+  body.innerHTML = currentRows.map((row, i) => `
+    <tr data-index="${i}" class="${i === selectedRowIndex ? 'selected' : ''}">
+      ${cols.map(c => `<td>${row[c] ?? ""}</td>`).join("")}
+    </tr>
+  `).join("");
+
+  body.querySelectorAll("tr").forEach(row => {
+    row.addEventListener("click", () => selectRow(Number(row.dataset.index)));
+  });
+}
+
+async function selectTable(name) {
+  selectedTable = name;
+  renderList();
+  const details = document.getElementById("details");
+  const res = await fetch(`/databases/${encodeURIComponent(currentDb)}/tables/${encodeURIComponent(name)}`);
+  if (!res.ok) { details.innerHTML = `<div id="details-placeholder">Table no longer exists.</div>`; return; }
+  const table = await res.json();
+  details.innerHTML = `
+    <h3>📋 ${table.table}</h3>
+    ${table.fields.map(f => `<div class="row"><span class="k">${f.name}</span><span>${f.type}${f.required ? " (required)" : ""}</span></div>`).join("")}
+    <div class="actions">
+      <button id="act-browse-rows">Browse data →</button>
+    </div>
+  `;
+  document.getElementById("act-browse-rows").onclick = () => openTable(name);
+}
+
+function selectRow(index) {
+  selectedRowIndex = index;
+  renderList();
+  const row = currentRows[index];
+  const details = document.getElementById("details");
+  details.innerHTML = `
+    <h3>${row.record_id ?? "Row"}</h3>
+    ${Object.entries(row).map(([k, v]) => `<div class="row"><span class="k">${k}</span><span>${v ?? ""}</span></div>`).join("")}
+  `;
 }
 
 async function selectObject(objectId) {
@@ -333,9 +528,14 @@ async function moveObject(objectId, tier) {
 async function deleteObject(objectId) {
   if (!confirm(`Delete ${objectId}? This cannot be undone.`)) return;
   await fetch(`/objects/${objectId}`, { method: "DELETE" });
-  selectedId = null;
-  document.getElementById("details").innerHTML = `<div id="details-placeholder">Select an object to see its details.</div>`;
+  resetDetails();
   await loadObjects();
+}
+
+function refreshCurrentView() {
+  if (viewMode === "tables") return loadTables();
+  if (viewMode === "rows") return loadRows();
+  return loadObjects();
 }
 
 function addMessage(text, who) {
@@ -373,7 +573,8 @@ document.getElementById("chat-form").addEventListener("submit", async (e) => {
   addMessage(reply.message, "bot");
   if (Array.isArray(reply.data)) addDataTable(reply.data);
 
-  loadObjects();
+  loadDatabaseNav();
+  refreshCurrentView();
 });
 
 document.getElementById("chat-input").addEventListener("keydown", (e) => {
@@ -383,7 +584,7 @@ document.getElementById("chat-input").addEventListener("keydown", (e) => {
   }
 });
 
-document.getElementById("btn-refresh").addEventListener("click", loadObjects);
+document.getElementById("btn-refresh").addEventListener("click", () => { loadDatabaseNav(); refreshCurrentView(); });
 
 document.getElementById("btn-upload").addEventListener("click", () => {
   document.getElementById("upload-input").click();
