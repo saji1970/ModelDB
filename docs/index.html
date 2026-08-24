@@ -232,6 +232,7 @@
     <a href="#platforms">Platforms</a>
     <a href="#quickstart">Quickstart</a>
     <a href="docs.html">Docs</a>
+    <a href="platform.html">Platform docs</a>
   </nav>
 </div>
 
@@ -311,28 +312,35 @@
           <td class="size-cell">libmdc_lite.dylib</td>
           <td class="size-cell">345 KB</td>
           <td><span class="chip verified">tests passing</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite/dist/macos-arm64">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v0.1.0/mdc-lite-v0.1.0-macos-arm64.dylib">Download →</a></td>
         </tr>
         <tr>
           <td class="plat-name">Windows<span class="sub">x86_64, mingw-w64 ABI</span></td>
           <td class="size-cell">mdc_lite.dll</td>
           <td class="size-cell">991 KB</td>
           <td><span class="chip partial">compiled, unrun</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite/dist/windows-x86_64">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v0.1.0/mdc-lite-v0.1.0-windows-x86_64.dll">Download →</a></td>
         </tr>
         <tr>
-          <td class="plat-name">Android<span class="sub">arm64-v8a</span></td>
+          <td class="plat-name">Android<span class="sub">arm64-v8a — real devices</span></td>
           <td class="size-cell">libmdc_lite.so</td>
           <td class="size-cell">372 KB</td>
           <td><span class="chip partial">linked, unrun</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite/dist/android/arm64-v8a">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v0.1.0/mdc-lite-v0.1.0-android-arm64-v8a.so">Download →</a></td>
         </tr>
         <tr>
-          <td class="plat-name">Android<span class="sub">armeabi-v7a + x86_64</span></td>
+          <td class="plat-name">Android<span class="sub">armeabi-v7a — older devices</span></td>
           <td class="size-cell">libmdc_lite.so</td>
-          <td class="size-cell">250 – 482 KB</td>
+          <td class="size-cell">250 KB</td>
           <td><span class="chip partial">linked, unrun</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite/dist/android">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v0.1.0/mdc-lite-v0.1.0-android-armeabi-v7a.so">Download →</a></td>
+        </tr>
+        <tr>
+          <td class="plat-name">Android<span class="sub">x86_64 — emulator</span></td>
+          <td class="size-cell">libmdc_lite.so</td>
+          <td class="size-cell">482 KB</td>
+          <td><span class="chip partial">linked, unrun</span></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v0.1.0/mdc-lite-v0.1.0-android-x86_64.so">Download →</a></td>
         </tr>
         <tr>
           <td class="plat-name">iOS / watchOS<span class="sub">requires full Xcode to build</span></td>
@@ -348,9 +356,19 @@
           <td><span class="chip source">same as Android</span></td>
           <td><a class="dl-link" href="docs.html#android">Instructions →</a></td>
         </tr>
+        <tr>
+          <td class="plat-name">Source<span class="sub">any platform, <code>cargo build</code></span></td>
+          <td class="size-cell">mdc-lite-v0.1.0-source.tar.gz</td>
+          <td class="size-cell">17 KB</td>
+          <td><span class="chip source">build it yourself</span></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v0.1.0/mdc-lite-v0.1.0-source.tar.gz">Download →</a></td>
+        </tr>
       </tbody>
     </table>
     <p class="table-note">
+      Every build above ships from a single tagged
+      <a href="https://github.com/saji1970/ModelDB/releases/tag/mdc-lite-v0.1.0">GitHub Release</a>
+      (checksums included) - not loose files browsed out of the repo tree.
       "Compiled, unrun" means the build succeeds and produces a
       correctly formatted binary, but couldn't be executed in the
       environment that built it — there was no Wine, Android emulator,

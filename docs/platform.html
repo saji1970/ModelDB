@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MDC Platform Documentation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Installation and usage guide for the MDC platform — storing and querying AI models, images, documents, and other object types.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14161b;
+    --paper: #eff1f0;
+    --seal: #b23a2e;
+    --amber: #c98a2c;
+    --steel: #3e6e8e;
+    --mid: #8b8f92;
+
+    --bg: var(--paper);
+    --bg-raised: #ffffff;
+    --text: var(--ink);
+    --text-dim: #52565c;
+    --border: #d7dad8;
+    --accent: var(--seal);
+    --accent-ink: #ffffff;
+    --code-bg: #1b1d22;
+    --code-text: #e7e5df;
+    --callout-bg: #f7ecd8;
+    --callout-text: #6b4f14;
+    --callout-border: #e3c483;
+    --chip-hot-bg: #fbe2df; --chip-hot-text: #8f2c20;
+    --chip-warm-bg: #f7ecd8; --chip-warm-text: #7a5a17;
+    --chip-cold-bg: #e2ecf2; --chip-cold-text: #2c5878;
+    --chip-archive-bg: #e4efe2; --chip-archive-text: #33622f;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101216; --bg-raised: #191b20; --text: #eceae4; --text-dim: #a3a7ad; --border: #2b2e34;
+      --accent: #d9614f; --accent-ink: #14161b; --code-bg: #0b0c0f; --code-text: #e7e5df;
+      --callout-bg: #2e2610; --callout-text: #e0b45c; --callout-border: #4a3c19;
+      --chip-hot-bg: #33201d; --chip-hot-text: #e28f80;
+      --chip-warm-bg: #2e2610; --chip-warm-text: #e0b45c;
+      --chip-cold-bg: #1c2a34; --chip-cold-text: #7fb1d3;
+      --chip-archive-bg: #1e2b1c; --chip-archive-text: #8fc989;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101216; --bg-raised: #191b20; --text: #eceae4; --text-dim: #a3a7ad; --border: #2b2e34;
+    --accent: #d9614f; --accent-ink: #14161b; --code-bg: #0b0c0f; --code-text: #e7e5df;
+    --callout-bg: #2e2610; --callout-text: #e0b45c; --callout-border: #4a3c19;
+    --chip-hot-bg: #33201d; --chip-hot-text: #e28f80;
+    --chip-warm-bg: #2e2610; --chip-warm-text: #e0b45c;
+    --chip-cold-bg: #1c2a34; --chip-cold-text: #7fb1d3;
+    --chip-archive-bg: #1e2b1c; --chip-archive-text: #8fc989;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: "Newsreader", Georgia, serif; font-weight: 600; text-wrap: balance; }
+  code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  code { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 3px; padding: 1px 6px; font-size: 0.9em; }
+  a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #topbar {
+    position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 15px; text-decoration: none; color: var(--text); }
+  .brand .dot { color: var(--accent); }
+  #topbar nav { display: flex; gap: 22px; }
+  #topbar nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; }
+  #topbar nav a:hover, #topbar nav a.current { color: var(--text); }
+
+  #layout { display: grid; grid-template-columns: 240px minmax(0, 720px); gap: 64px; max-width: 1040px; margin: 0 auto; padding: 48px 28px 100px; }
+  #sidebar { position: sticky; top: 80px; align-self: start; font-size: 14px; }
+  #sidebar .grp { margin-bottom: 22px; }
+  #sidebar .grp-label { font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--mid); margin-bottom: 8px; }
+  #sidebar a { display: block; color: var(--text-dim); text-decoration: none; padding: 4px 0; }
+  #sidebar a:hover { color: var(--text); }
+
+  main h1 { font-size: 2.1rem; margin: 0 0 8px; }
+  main .lede { color: var(--text-dim); font-size: 1.05rem; margin: 0 0 40px; }
+  main section { margin-bottom: 52px; scroll-margin-top: 84px; }
+  main h2 { font-size: 1.5rem; margin: 0 0 16px; border-top: 1px solid var(--border); padding-top: 24px; }
+  main section:first-of-type h2 { border-top: none; padding-top: 0; }
+  main h3 { font-size: 1.1rem; font-weight: 500; margin: 28px 0 10px; }
+  main p { margin: 0 0 14px; }
+  main ul, main ol { margin: 0 0 14px; padding-left: 22px; }
+  main li { margin-bottom: 6px; }
+
+  pre.code-block { background: var(--code-bg); color: var(--code-text); border-radius: 6px; padding: 18px 20px; overflow-x: auto; font-size: 13.5px; line-height: 1.7; margin: 0 0 16px; }
+  pre.code-block code { background: none; border: none; padding: 0; color: inherit; }
+  .transcript { background: var(--code-bg); color: var(--code-text); border-radius: 6px; padding: 18px 20px; overflow-x: auto; font-family: "JetBrains Mono", monospace; font-size: 13px; line-height: 1.75; margin: 0 0 16px; white-space: pre-wrap; }
+  .transcript .prompt { color: #6fa6c4; }
+  .transcript .reply { color: #9dc48b; }
+  .transcript .c1 { color: #7d8590; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px; }
+  table :is(th, td) { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table th { font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 500; }
+  table code { font-size: 12.5px; }
+
+  .callout { background: var(--callout-bg); color: var(--callout-text); border: 1px solid var(--callout-border); border-radius: 6px; padding: 16px 18px; font-size: 14.5px; margin-bottom: 16px; }
+  .callout strong { display: block; margin-bottom: 4px; font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .tier-chip { display: inline-flex; align-items: center; gap: 6px; font-family: "JetBrains Mono", monospace; font-size: 11.5px; padding: 3px 9px; border-radius: 3px; white-space: nowrap; font-weight: 500; }
+  .tier-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .tier-hot { background: var(--chip-hot-bg); color: var(--chip-hot-text); } .tier-hot::before { background: var(--chip-hot-text); }
+  .tier-warm { background: var(--chip-warm-bg); color: var(--chip-warm-text); } .tier-warm::before { background: var(--chip-warm-text); }
+  .tier-cold { background: var(--chip-cold-bg); color: var(--chip-cold-text); } .tier-cold::before { background: var(--chip-cold-text); }
+  .tier-archive { background: var(--chip-archive-bg); color: var(--chip-archive-text); } .tier-archive::before { background: var(--chip-archive-text); }
+
+  @media (max-width: 860px) {
+    #layout { grid-template-columns: minmax(0, 1fr); }
+    #sidebar { position: static; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+    #sidebar .grp { display: contents; }
+    #sidebar .grp-label { display: none; }
+    #topbar nav { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <a class="brand" href="index.html">mdc<span class="dot">·</span>platform</a>
+  <nav>
+    <a href="index.html">mdc-lite</a>
+    <a href="platform.html" class="current">Platform docs</a>
+    <a href="https://github.com/saji1970/ModelDB/tree/main/mdc">Source</a>
+  </nav>
+</div>
+
+<div id="layout">
+  <aside id="sidebar">
+    <div class="grp">
+      <div class="grp-label">Get started</div>
+      <a href="#installation">Installation</a>
+      <a href="#concepts">Core concepts</a>
+    </div>
+    <div class="grp">
+      <div class="grp-label">Storing objects</div>
+      <a href="#models">AI models</a>
+      <a href="#other-objects">Images, documents, logs</a>
+      <a href="#tiers">Storage tiers</a>
+    </div>
+    <div class="grp">
+      <div class="grp-label">The database layer</div>
+      <a href="#multi-db">Multiple databases</a>
+      <a href="#tables">Tables &amp; queries</a>
+      <a href="#find">Universal search</a>
+    </div>
+    <div class="grp">
+      <div class="grp-label">Reference</div>
+      <a href="#rest-api">REST API</a>
+      <a href="#chat-commands">Chat commands</a>
+    </div>
+  </aside>
+
+  <main>
+    <h1>MDC Platform</h1>
+    <p class="lede">The conversational data engine underneath mdc-lite's sibling product — a server that stores AI models, images, documents, and ordinary database tables side by side, all reachable through the same natural-language layer.</p>
+
+    <section id="installation">
+      <h2>Installation</h2>
+      <pre class="code-block"><code>git clone https://github.com/saji1970/ModelDB.git
+cd ModelDB/mdc
+
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt</code></pre>
+      <p>Two ways to run it:</p>
+      <table>
+        <tr><th>Command</th><th>What it starts</th></tr>
+        <tr><td><code>python -m mdc</code></td><td>The conversational shell (<code>mdc&gt;</code> prompt) - auto-creates and seeds <code>data/mdc.duckdb</code> at a small scale the first time, so startup stays fast.</td></tr>
+        <tr><td><code>python -m mdc serve</code></td><td>The REST API and the Storage Explorer browser UI (a Windows-Explorer-style app with a chat panel), at <code>http://127.0.0.1:8000</code>.</td></tr>
+      </table>
+      <p><code>python -m mdc db init</code> seeds the full spec-minimum synthetic payments dataset (10,000 merchants / 50,000 customers / 500,000 transactions, deterministic, seed 42) if you want the larger analytics dataset rather than the small dev seed.</p>
+    </section>
+
+    <section id="concepts">
+      <h2>Core concepts</h2>
+      <p>MDC is two systems sharing one storage layer, kept deliberately separate because they solve different problems:</p>
+      <ul>
+        <li><strong>The polymorphic object store</strong> - classifies <em>any</em> uploaded bytes (a model checkpoint, an image, a document, a log file) by real content signature, not filename, and routes it through a tiering decision. This is what <a href="#models">§ AI models</a> and <a href="#other-objects">§ Other objects</a> cover.</li>
+        <li><strong>The database layer</strong> - unlimited named databases, each with its own schema-validated tables, created and queried entirely through chat or the CLI. This is what <a href="#multi-db">§ The database layer</a> covers.</li>
+      </ul>
+      <p>Both are driven by the same principle: an LLM proposes an interpretation, but a deterministic validator - never the LLM itself - decides what operation actually reaches storage. No natural-language command generates raw SQL.</p>
+    </section>
+
+    <section id="models">
+      <h2>Storing &amp; retrieving AI models</h2>
+      <p>Upload a <code>.safetensors</code> file and MDC parses its real header, splits each tensor into row-aligned blocks, and stores every tensor as its own independently addressable, independently tiered object - not one opaque blob.</p>
+      <pre class="code-block"><code>curl -X POST "http://127.0.0.1:8000/objects?filename=model.safetensors" \
+  --data-binary @model.safetensors
+# {"object_id":"AIM-58F0BB747C","type":"AI_MODEL","tensor_count":2,"total_parameters":16}
+
+curl http://127.0.0.1:8000/models/AIM-58F0BB747C
+# manifest: tensor_count, total_parameters, dtype, checksum, ...
+
+curl http://127.0.0.1:8000/models/AIM-58F0BB747C/tensors/linear.weight
+# raw bytes of just that one tensor - the rest of the model is never touched</code></pre>
+      <p>The same thing through chat:</p>
+      <div class="transcript"><span class="prompt">&gt; list models</span>
+<span class="reply">1 AI_MODEL object(s).</span>
+
+<span class="prompt">&gt; move AIM-58F0BB747C to hot</span>
+<span class="reply">Moved "AIM-58F0BB747C" and its 2 tensor block(s) to HOT.</span></div>
+      <p><code>move</code> on a model cascades to every one of its tensor blocks - each tensor gets its own independent tier decision at upload time, so moving just the model's manifest would silently leave the actual weights wherever they were.</p>
+    </section>
+
+    <section id="other-objects">
+      <h2>Storing other object types</h2>
+      <p>The same upload endpoint handles images (real dimension parsing from file headers), documents (text extraction + chunking), logs, tensors, and tabular files - classified from content, never from a file extension.</p>
+      <div class="transcript"><span class="prompt">&gt; store ./report.md</span>
+<span class="reply">Stored "report.md" as DOC-30A3DC793C (DOCUMENT).</span>
+
+<span class="prompt">&gt; search for revenue</span>
+<span class="reply">1 document matched "revenue".</span>
+
+<span class="prompt">&gt; explain DOC-30A3DC793C</span>
+<span class="reply"><span class="c1">ARCHIVE (DNA-encoded): explicit archival request on an immutable,</span>
+<span class="c1">unaccessed object. Compressed with ZLIB: the content measured as</span>
+<span class="c1">compressible.</span></span></div>
+      <p>Every object - model, image, document, or table row - carries a SHA-256 checksum verified on every read. A tampered or corrupted read never silently returns bad bytes; it fails with a clear integrity error instead.</p>
+    </section>
+
+    <section id="tiers">
+      <h2>Storage tiers</h2>
+      <p>Tier is a real consequence, not a label - only <span class="tier-chip tier-hot">HOT</span> maps to genuinely different physical storage (an in-memory backend) today; <span class="tier-chip tier-archive">ARCHIVE</span> is the one exception that goes further still, actually encoding bytes to simulated DNA base sequences (2 bits per base, A/C/G/T - a real, working prototype encoder, not physical synthesis).</p>
+      <table>
+        <tr><th>Tier</th><th>When</th><th>Backend</th></tr>
+        <tr><td><span class="tier-chip tier-hot">HOT</span></td><td>≥ 10 reads/day</td><td>In-memory (not persisted across a restart - by design)</td></tr>
+        <tr><td><span class="tier-chip tier-warm">WARM</span></td><td>≥ 0.1 reads/day, or mutable &amp; recently touched</td><td>DuckDB (durable)</td></tr>
+        <tr><td><span class="tier-chip tier-cold">COLD</span></td><td>Immutable, zero access, zero mutation</td><td>DuckDB (durable)</td></tr>
+        <tr><td><span class="tier-chip tier-archive">ARCHIVE</span></td><td>Explicitly requested (never inferred from low access alone)</td><td>Simulated DNA-base encoding</td></tr>
+      </table>
+    </section>
+
+    <section id="multi-db">
+      <h2>Multiple databases</h2>
+      <p>No hardcoded limit on how many databases exist - each is a fully isolated DuckDB file with its own schema registry, created lazily the moment you ask for it, entirely from chat:</p>
+      <div class="transcript"><span class="prompt">&gt; create database inventory</span>
+<span class="reply">Created database "inventory" and switched to it.</span>
+
+<span class="prompt">&gt; create table products with sku string, name string, price decimal</span>
+<span class="reply">Created table "products" in "inventory" with fields: sku (string), name (string), price (decimal).</span>
+
+<span class="prompt">&gt; insert into products sku=ABC123, name=Widget, price=9.99</span>
+<span class="reply">Inserted PRO-461A9FC740 into "products".</span></div>
+    </section>
+
+    <section id="tables">
+      <h2>Tables &amp; queries</h2>
+      <p>Read another database's table without switching to it, using an explicit qualifier:</p>
+      <pre class="code-block"><code>show data in products in database inventory
+describe table products in database inventory</code></pre>
+      <p>Table creation only ever produces a validated, typed <code>SchemaRegistry</code> collection - never raw SQL DDL generated from chat text, the same injection-avoidance principle as everything else in MDC.</p>
+    </section>
+
+    <section id="find">
+      <h2>Universal search</h2>
+      <p><code>find</code> searches every database's tables <em>and</em> documents at once, with deterministic clause extraction for amount constraints and explicit scoping - no need to know which database or table something lives in:</p>
+      <div class="transcript"><span class="prompt">&gt; find widget under 20000</span>
+<span class="reply">1 row(s) matched "widget": ABC123 - Widget - $9.99 (inventory.products)</span>
+
+<span class="prompt">&gt; find widget in table products in database inventory</span>
+<span class="reply">1 row(s) matched.</span></div>
+    </section>
+
+    <section id="rest-api">
+      <h2>REST API reference</h2>
+      <table>
+        <tr><th>Endpoint</th><th>Does</th></tr>
+        <tr><td><code>POST /objects</code></td><td>Upload any file - classified and routed automatically</td></tr>
+        <tr><td><code>GET /objects/{id}</code></td><td>Metadata: type, tier, compression, checksum</td></tr>
+        <tr><td><code>POST /objects/{id}/read</code></td><td>Raw content back</td></tr>
+        <tr><td><code>POST /objects/{id}/move</code></td><td>Force a tier - cascades to every tensor block for a model</td></tr>
+        <tr><td><code>GET /objects/{id}/strategy</code></td><td>Human-readable explanation of the current tier/compression decision</td></tr>
+        <tr><td><code>GET /models/{id}</code></td><td>A model's manifest (tensor count, parameters, dtype, checksum)</td></tr>
+        <tr><td><code>GET /models/{id}/tensors/{name}</code></td><td>One tensor's raw bytes, without touching the rest of the model</td></tr>
+        <tr><td><code>GET /databases</code> / <code>POST /databases</code></td><td>List or create a named database</td></tr>
+        <tr><td><code>GET /databases/{name}/tables/{table}/rows</code></td><td>A table's rows, from the browser UI or any HTTP client</td></tr>
+        <tr><td><code>POST /chat</code></td><td>The same conversational layer the CLI and browser chat panel use</td></tr>
+      </table>
+    </section>
+
+    <section id="chat-commands">
+      <h2>Chat command reference</h2>
+      <table>
+        <tr><th>Say this</th><th>To</th></tr>
+        <tr><td><code>store ./file</code>, <code>list models</code>, <code>show &lt;id&gt;</code>, <code>archive &lt;id&gt;</code>, <code>move &lt;id&gt; to hot</code>, <code>search for &lt;text&gt;</code></td><td>Work with polymorphic objects (models, images, documents, ...)</td></tr>
+        <tr><td><code>create database &lt;name&gt;</code>, <code>create table ... with ...</code>, <code>show data in &lt;table&gt;</code>, <code>insert into &lt;table&gt; ...</code></td><td>Manage databases and tables</td></tr>
+        <tr><td><code>find &lt;text&gt; [under/over &lt;amount&gt;]</code></td><td>Search every database and document at once</td></tr>
+        <tr><td><code>Show all merchants</code>, <code>Create a merchant called ...</code></td><td>Merchants CRUD/analytics (a separate, earlier conversational domain - see the platform README for why)</td></tr>
+      </table>
+      <div class="callout"><strong>Full reference</strong>The complete README, including the acceptance-test walkthroughs this documentation draws from, lives at <a href="https://github.com/saji1970/ModelDB/blob/main/mdc/README.md">mdc/README.md</a>; the architecture write-up (including the honest scoping note on why merchants-CRUD and the object store stay separate systems) is at <a href="https://github.com/saji1970/ModelDB/blob/main/mdc/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>.</div>
+    </section>
+  </main>
+</div>
+
+</body>
+</html>
