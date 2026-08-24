@@ -1,0 +1,37 @@
+[package]
+name = "mdc-lite"
+version = "0.1.0"
+edition = "2021"
+description = "Tiny embeddable encrypted key-value store for mobile/wearable apps - the native counterpart to MDC's polymorphic storage engine."
+license = "Apache-2.0"
+rust-version = "1.74"
+
+# lib: normal Rust dependents (tests, future Rust callers).
+# staticlib: for iOS/watchOS static linking into an app/XCFramework.
+# cdylib: for Android/Wear OS via JNI, and any other C-ABI consumer.
+[lib]
+name = "mdc_lite"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+# XChaCha20-Poly1305: a 192-bit-nonce AEAD cipher - safe to use a fresh
+# random nonce on every write with no counter/state to persist (unlike
+# AES-GCM's 96-bit nonce, which needs care at high write volumes to
+# avoid reuse), and fast in pure software - no dependence on hardware
+# AES acceleration that may not be uniformly present on older wearable
+# chips. `getrandom` feature wires in an OS-backed CSPRNG for nonces.
+chacha20poly1305 = { version = "0.10", features = ["getrandom"] }
+# Keyed hash (BLAKE3) for deriving each entry's on-disk filename from
+# its logical key + the store's own secret key, so filenames on disk
+# never leak plaintext key names either.
+blake3 = "1.5"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = "z"     # optimize for size, not speed - this is meant to be tiny
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
