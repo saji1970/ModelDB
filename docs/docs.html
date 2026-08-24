@@ -320,15 +320,19 @@ NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin"
 # different minSdkVersion.
 export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android24-clang"
 export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_BIN/aarch64-linux-android24-clang"
 export CC_armv7_linux_androideabi="$NDK_BIN/armv7a-linux-androideabi24-clang"
 export AR_armv7_linux_androideabi="$NDK_BIN/llvm-ar"
+export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$NDK_BIN/armv7a-linux-androideabi24-clang"
 export CC_x86_64_linux_android="$NDK_BIN/x86_64-linux-android24-clang"
 export AR_x86_64_linux_android="$NDK_BIN/llvm-ar"
+export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$NDK_BIN/x86_64-linux-android24-clang"
 
 cargo build --release --target aarch64-linux-android    # arm64-v8a
 cargo build --release --target armv7-linux-androideabi   # armeabi-v7a
 cargo build --release --target x86_64-linux-android       # emulator</code></pre>
-      <p>The <code>CC_*</code>/<code>AR_*</code> environment variables matter beyond cargo's own linker flag: this crate's BLAKE3 dependency runs its own C build script that needs to find a compiler independently, and fails with <code>ToolNotFound</code> without them even when the Rust side is otherwise configured correctly. Copy each resulting <code>.so</code> into <code>jniLibs/&lt;abi&gt;/</code> — Wear OS runs on Android, so the same outputs work for a watch face the same way they do for a phone app.</p>
+      <div class="callout"><strong>Both variable sets are load-bearing</strong>An earlier version of this page only listed <code>CC_*</code>/<code>AR_*</code>, and following those instructions exactly reproduces a real build failure, not a working one. <code>CC_*</code>/<code>AR_*</code> fixes the BLAKE3 dependency's own C build script (<code>ToolNotFound</code> without them). <code>CARGO_TARGET_&lt;TRIPLE&gt;_LINKER</code> is a separate variable cargo itself reads - without it, cargo's default linker resolution for these targets can fall through to whatever plain <code>clang</code>/<code>ld</code> is on <code>PATH</code> (on macOS, Apple's own linker), which fails with a confusing <code>ld: unknown options: --version-script=...</code> error since Apple's linker doesn't understand the ELF-target flags rustc passes it.</div>
+      <p>Copy each resulting <code>.so</code> into <code>jniLibs/&lt;abi&gt;/</code> — Wear OS runs on Android, so the same outputs work for a watch face the same way they do for a phone app.</p>
     </section>
 
     <section id="limitations">

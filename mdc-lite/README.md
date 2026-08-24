@@ -162,23 +162,41 @@ NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin"
 # to target a different minSdkVersion.
 export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android24-clang"
 export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_BIN/aarch64-linux-android24-clang"
 export CC_armv7_linux_androideabi="$NDK_BIN/armv7a-linux-androideabi24-clang"
 export AR_armv7_linux_androideabi="$NDK_BIN/llvm-ar"
+export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$NDK_BIN/armv7a-linux-androideabi24-clang"
 export CC_x86_64_linux_android="$NDK_BIN/x86_64-linux-android24-clang"
 export AR_x86_64_linux_android="$NDK_BIN/llvm-ar"
+export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$NDK_BIN/x86_64-linux-android24-clang"
 
 cargo build --release --target aarch64-linux-android      # arm64-v8a (real devices)
 cargo build --release --target armv7-linux-androideabi    # armeabi-v7a (older devices)
 cargo build --release --target x86_64-linux-android        # x86_64 (emulator)
 ```
 
-The `CC_*`/`AR_*` env vars matter beyond cargo's own `-C linker` flag:
-this crate's `blake3` dependency runs its own C build script (via the
-`cc` crate) that needs to find a working C compiler independently, and
-without them it fails with `ToolNotFound` even though the Rust side of
-the build would otherwise be configured correctly. Copy each `.so`
-into your app's `jniLibs/<abi>/` directory (`arm64-v8a`,
-`armeabi-v7a`, `x86_64`). Wear OS runs on Android, so the same outputs
+Both sets of variables are load-bearing, for two different reasons -
+**and this was verified the hard way**: an earlier version of this
+README only listed the `CC_*`/`AR_*` pair, and following those
+instructions exactly reproduces a real failure, not a working build.
+
+- `CC_*`/`AR_*` - this crate's `blake3` dependency runs its own C
+  build script (via the `cc` crate) that needs to find a working C
+  compiler independently of cargo's own linker selection; without
+  these, that step fails with `ToolNotFound` even when everything else
+  is configured correctly.
+- `CARGO_TARGET_<TRIPLE>_LINKER` - without this, cargo's own default
+  linker resolution for these targets can fall through to whatever
+  plain `clang`/`ld` your system happens to have on `PATH` (on macOS,
+  Apple's own linker) instead of the NDK's - which fails with a
+  confusing `ld: unknown options: --version-script=...` error, since
+  Apple's linker doesn't understand the ELF-target flags rustc passes
+  it. `CC_*`/`AR_*` alone does not fix this; it's a separate variable
+  cargo itself reads.
+
+Copy each `.so` into your app's `jniLibs/<abi>/` directory
+(`arm64-v8a`, `armeabi-v7a`, `x86_64`). Wear OS runs on Android, so the
+same outputs
 work for a watch face or Wear OS app the same way they do for a phone
 app.
 

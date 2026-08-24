@@ -1,4 +1,4 @@
-# mdc-lite v0.1.0 - Release Build Manifest
+# mdc-lite v1.1.0 - Release Build Manifest
 
 Built and verified 2026-08-24 on macOS (Apple Silicon), rustc 1.91.1
 (stable-aarch64-apple-darwin toolchain), release profile
@@ -64,6 +64,23 @@ binary) and would misrepresent this project's actual footprint sitting
 next to a 345 KB `.dylib`. If you need it, `cargo build --release`
 from source produces it directly - it's not a hard-to-reproduce
 artifact, just one not worth bundling.
+
+## What changed since v0.1.0
+
+No source changes to the crate itself - `src/lib.rs` and `src/ffi.rs`
+are unchanged, same 14 tests, same API. This release exists to fix a
+real bug caught while rebuilding these exact artifacts: rebuilding the
+Android targets with the *documented* env vars (`CC_*`/`AR_*` only, no
+`CARGO_TARGET_<TRIPLE>_LINKER`) failed outright with `ld: unknown
+options: --version-script=...` - cargo's own linker resolution for
+these targets was falling through to the host's system linker (Apple's
+ld, which doesn't understand the ELF-target flags rustc was passing
+it), not the NDK's. `CC_*`/`AR_*` alone was never sufficient; it only
+covers the `blake3` dependency's own C build script, a separate step
+from cargo's Rust-level link. The README and docs site's Android
+build instructions were wrong in v0.1.0 and are fixed as of this
+release - verified by reproducing the failure, then reproducing the
+fix, before documenting either.
 
 ## Toolchain versions used
 
