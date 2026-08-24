@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mdc-lite</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A 345 KB embeddable encrypted key-value store for iOS, watchOS, Android, Wear OS, and desktop apps.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Newsreader:ital,opsz@1,6..72&family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14161b;
+    --paper: #eff1f0;
+    --seal: #b23a2e;
+    --amber: #c98a2c;
+    --steel: #3e6e8e;
+    --mid: #8b8f92;
+
+    --bg: var(--paper);
+    --bg-raised: #ffffff;
+    --text: var(--ink);
+    --text-dim: #52565c;
+    --border: #d7dad8;
+    --accent: var(--seal);
+    --accent-ink: #ffffff;
+    --tag-nonce: var(--steel);
+    --tag-cipher: #4b4f55;
+    --tag-tag: var(--seal);
+    --code-bg: #1b1d22;
+    --code-text: #e7e5df;
+    --chip-verified-bg: #e4efe2;
+    --chip-verified-text: #33622f;
+    --chip-partial-bg: #f7ecd8;
+    --chip-partial-text: #7a5a17;
+    --chip-source-bg: #eceef0;
+    --chip-source-text: #52565c;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101216;
+      --bg-raised: #191b20;
+      --text: #eceae4;
+      --text-dim: #a3a7ad;
+      --border: #2b2e34;
+      --accent: #d9614f;
+      --accent-ink: #14161b;
+      --tag-nonce: #6fa6c4;
+      --tag-cipher: #9a9ea4;
+      --tag-tag: #d9614f;
+      --code-bg: #0b0c0f;
+      --code-text: #e7e5df;
+      --chip-verified-bg: #1e2b1c;
+      --chip-verified-text: #8fc989;
+      --chip-partial-bg: #2e2610;
+      --chip-partial-text: #e0b45c;
+      --chip-source-bg: #22252b;
+      --chip-source-text: #a3a7ad;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #101216;
+    --bg-raised: #191b20;
+    --text: #eceae4;
+    --text-dim: #a3a7ad;
+    --border: #2b2e34;
+    --accent: #d9614f;
+    --accent-ink: #14161b;
+    --tag-nonce: #6fa6c4;
+    --tag-cipher: #9a9ea4;
+    --tag-tag: #d9614f;
+    --code-bg: #0b0c0f;
+    --code-text: #e7e5df;
+    --chip-verified-bg: #1e2b1c;
+    --chip-verified-text: #8fc989;
+    --chip-partial-bg: #2e2610;
+    --chip-partial-text: #e0b45c;
+    --chip-source-bg: #22252b;
+    --chip-source-text: #a3a7ad;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 { font-family: "Newsreader", Georgia, serif; font-weight: 600; text-wrap: balance; margin: 0; }
+  code, .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---------- top bar ---------- */
+  #topbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+  .brand .dot { color: var(--accent); }
+  #topbar nav { display: flex; gap: 26px; font-size: 14px; }
+  #topbar nav a { color: var(--text-dim); text-decoration: none; }
+  #topbar nav a:hover { color: var(--text); }
+
+  /* ---------- hero ---------- */
+  #hero { padding: 76px 0 40px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: "JetBrains Mono", monospace; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-dim); border: 1px solid var(--border); border-radius: 3px; padding: 5px 10px;
+    margin-bottom: 22px;
+  }
+  .eyebrow b { color: var(--amber); font-weight: 700; }
+  #hero h1 { font-size: clamp(2.4rem, 4.6vw, 3.6rem); line-height: 1.08; max-width: 15ch; }
+  #hero h1 em { font-style: italic; color: var(--accent); }
+  #hero .lede { font-size: 1.15rem; color: var(--text-dim); max-width: 56ch; margin: 22px 0 34px; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 56px; }
+  .btn {
+    font-family: "Public Sans", sans-serif; font-weight: 600; font-size: 14.5px;
+    padding: 12px 20px; border-radius: 3px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid transparent; cursor: pointer;
+  }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-ghost { border-color: var(--border); color: var(--text); background: transparent; }
+  .btn-ghost:hover { border-color: var(--text-dim); }
+
+  /* ---------- byte diagram ---------- */
+  #byte-diagram { margin-bottom: 8px; }
+  .diagram-label { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--text-dim); margin-bottom: 10px; letter-spacing: 0.02em; }
+  .bytes {
+    display: flex; width: 100%; height: 64px; border-radius: 4px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .bytes .seg { display: flex; align-items: center; justify-content: center; font-family: "JetBrains Mono", monospace; font-size: 13px; font-weight: 500; color: #fff; position: relative; }
+  .bytes .seg.nonce { background: var(--tag-nonce); flex: 24; }
+  .bytes .seg.cipher { background: var(--tag-cipher); flex: 60; }
+  .bytes .seg.tag { background: var(--tag-tag); flex: 16; }
+  .byte-keys { display: flex; justify-content: space-between; margin-top: 10px; font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--text-dim); }
+  .byte-keys span b { color: var(--text); }
+
+  /* ---------- sections ---------- */
+  section { padding: 64px 0; border-top: 1px solid var(--border); }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; margin-bottom: 40px; flex-wrap: wrap; }
+  .section-head h2 { font-size: 1.9rem; }
+  .section-head .num { font-family: "JetBrains Mono", monospace; color: var(--mid); font-size: 13px; }
+
+  /* feature rows */
+  .feature-rows { display: flex; flex-direction: column; }
+  .frow { display: grid; grid-template-columns: 200px 1fr; gap: 28px; padding: 26px 0; border-top: 1px solid var(--border); }
+  .frow:first-child { border-top: none; }
+  .frow h3 { font-size: 1.15rem; font-weight: 500; }
+  .frow p { margin: 8px 0 0; color: var(--text-dim); max-width: 62ch; }
+  .frow .tag { font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--amber); }
+
+  /* platform table */
+  .platform-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .platform-table th { text-align: left; font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 500; padding: 0 0 12px; border-bottom: 1px solid var(--border); }
+  .platform-table td { padding: 16px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .platform-table tr:last-child td { border-bottom: none; }
+  .plat-name { font-weight: 600; }
+  .plat-name .sub { display: block; font-weight: 400; color: var(--text-dim); font-size: 13px; margin-top: 2px; }
+  .size-cell { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-family: "JetBrains Mono", monospace; font-size: 11.5px; padding: 4px 9px; border-radius: 3px; white-space: nowrap; }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .chip.verified { background: var(--chip-verified-bg); color: var(--chip-verified-text); }
+  .chip.verified::before { background: var(--chip-verified-text); }
+  .chip.partial { background: var(--chip-partial-bg); color: var(--chip-partial-text); }
+  .chip.partial::before { background: var(--chip-partial-text); }
+  .chip.source { background: var(--chip-source-bg); color: var(--chip-source-text); }
+  .chip.source::before { background: var(--chip-source-text); }
+  .dl-link { font-family: "JetBrains Mono", monospace; font-size: 13px; text-decoration: none; }
+  .dl-link.disabled { color: var(--mid); pointer-events: none; }
+  .table-note { margin-top: 20px; font-size: 13.5px; color: var(--text-dim); }
+  .table-note a { color: var(--text-dim); text-decoration-color: var(--border); }
+
+  /* code panel */
+  .code-panel { background: var(--code-bg); color: var(--code-text); border-radius: 6px; padding: 26px 28px; overflow-x: auto; }
+  .code-panel pre { margin: 0; font-family: "JetBrains Mono", monospace; font-size: 13.5px; line-height: 1.7; }
+  .code-panel .c1 { color: #7d8590; }
+  .code-panel .kw { color: #d9614f; }
+  .code-panel .str { color: #9dc48b; }
+  .code-tabs { display: flex; gap: 4px; margin-bottom: 18px; }
+  .code-tabs button { font-family: "JetBrains Mono", monospace; font-size: 12.5px; padding: 6px 12px; border-radius: 3px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-dim); cursor: pointer; }
+  .code-tabs button.active { color: var(--text); border-color: var(--accent); }
+  .lang-block { display: none; }
+  .lang-block.active { display: block; }
+
+  /* security */
+  .security-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .security-cell { background: var(--bg-raised); padding: 26px; }
+  .security-cell h3 { font-size: 1.05rem; font-weight: 500; margin-bottom: 10px; }
+  .security-cell p { color: var(--text-dim); margin: 0; font-size: 14.5px; }
+  .security-cell .k { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--amber); display: block; margin-bottom: 8px; }
+
+  /* footer */
+  footer { padding: 48px 0 60px; }
+  .footer-grid { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 24px; }
+  footer .mono { color: var(--text-dim); font-size: 13px; }
+  footer nav { display: flex; gap: 22px; }
+  footer nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; }
+  footer nav a:hover { color: var(--text); }
+
+  @media (max-width: 720px) {
+    #topbar nav { display: none; }
+    .frow { grid-template-columns: 1fr; gap: 6px; }
+    .security-grid { grid-template-columns: 1fr; }
+    .platform-table { font-size: 13px; }
+    .platform-table th:nth-child(3), .platform-table td:nth-child(3) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="brand">mdc<span class="dot">·</span>lite</div>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#platforms">Platforms</a>
+    <a href="#quickstart">Quickstart</a>
+    <a href="docs.html">Docs</a>
+  </nav>
+</div>
+
+<div class="wrap">
+
+  <section id="hero" style="border-top: none;">
+    <div class="eyebrow">v0.1.0 &nbsp;·&nbsp; <b>345 KB</b> stripped &nbsp;·&nbsp; Apache 2.0</div>
+    <h1>An encrypted store small enough to <em>disappear</em> into your app.</h1>
+    <p class="lede">
+      mdc-lite is a key-value store built for the places a server can't
+      reach — a watch face, a phone app, a background service — with
+      every value and every key name sealed under XChaCha20-Poly1305
+      before it ever touches disk. No runtime. No dependencies to
+      speak of. Nothing readable outside the app that wrote it.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#platforms">Get a build</a>
+      <a class="btn btn-ghost" href="docs.html">Read the docs</a>
+      <a class="btn btn-ghost" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite">Source</a>
+    </div>
+
+    <div id="byte-diagram">
+      <div class="diagram-label">// what one entry looks like on disk</div>
+      <div class="bytes">
+        <div class="seg nonce">NONCE · 24B</div>
+        <div class="seg cipher">CIPHERTEXT</div>
+        <div class="seg tag">TAG · 16B</div>
+      </div>
+      <div class="byte-keys">
+        <span><b>random per write</b> — no counter to persist, no reuse risk</span>
+        <span><b>authenticated</b> — tampering fails the read, never silently returns</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="section-head">
+      <h2>What it actually does</h2>
+      <span class="num">01 — FEATURES</span>
+    </div>
+    <div class="feature-rows">
+      <div class="frow">
+        <div><span class="tag">Encryption</span><h3>Sealed keys, not just sealed values</h3></div>
+        <p>Key <em>names</em> are hashed with a keyed BLAKE3 hash before they ever become a filename — a directory listing of the raw store reveals nothing, not even how your data is organized.</p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Custody</span><h3>The key is yours, on purpose</h3></div>
+        <p>This library takes a 32-byte key and never generates, stores, or touches it beyond that. Real custody belongs to the platform's own secure hardware — iOS Secure Enclave / Keychain, Android Keystore / StrongBox — which is exactly where it should live.</p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Footprint</span><h3>345 KB, stripped, zero runtime</h3></div>
+        <p>Built in Rust with <code>opt-level = "z"</code>, LTO, and symbols stripped. No garbage collector, no interpreter, no background thread — a handful of file reads and writes, nothing more.</p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Integrity</span><h3>Two failure modes, chosen on purpose</h3></div>
+        <p><code>get()</code> on a specific key fails loud if it's been tampered with. <code>list_keys()</code> quietly skips anything it can't decrypt, so one bad or foreign file never hides every other valid key in the store.</p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Interop</span><h3>A C ABI, not a Rust-only API</h3></div>
+        <p>Every operation is exposed through a five-function C header — bind it from Swift, Kotlin, or anything else that speaks C calling conventions. No wrapper generation, no FFI framework.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="platforms">
+    <div class="section-head">
+      <h2>Get a build</h2>
+      <span class="num">02 — PLATFORMS</span>
+    </div>
+    <table class="platform-table">
+      <thead>
+        <tr><th>Platform</th><th>Artifact</th><th>Size</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="plat-name">macOS<span class="sub">Apple Silicon</span></td>
+          <td class="size-cell">libmdc_lite.dylib</td>
+          <td class="size-cell">345 KB</td>
+          <td><span class="chip verified">tests passing</span></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite/dist/macos-arm64">Download →</a></td>
+        </tr>
+        <tr>
+          <td class="plat-name">Windows<span class="sub">x86_64, mingw-w64 ABI</span></td>
+          <td class="size-cell">mdc_lite.dll</td>
+          <td class="size-cell">991 KB</td>
+          <td><span class="chip partial">compiled, unrun</span></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite/dist/windows-x86_64">Download →</a></td>
+        </tr>
+        <tr>
+          <td class="plat-name">Android<span class="sub">arm64-v8a</span></td>
+          <td class="size-cell">libmdc_lite.so</td>
+          <td class="size-cell">372 KB</td>
+          <td><span class="chip partial">linked, unrun</span></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite/dist/android/arm64-v8a">Download →</a></td>
+        </tr>
+        <tr>
+          <td class="plat-name">Android<span class="sub">armeabi-v7a + x86_64</span></td>
+          <td class="size-cell">libmdc_lite.so</td>
+          <td class="size-cell">250 – 482 KB</td>
+          <td><span class="chip partial">linked, unrun</span></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite/dist/android">Download →</a></td>
+        </tr>
+        <tr>
+          <td class="plat-name">iOS / watchOS<span class="sub">requires full Xcode to build</span></td>
+          <td class="size-cell">—</td>
+          <td class="size-cell">—</td>
+          <td><span class="chip source">build from source</span></td>
+          <td><a class="dl-link" href="docs.html#ios">Instructions →</a></td>
+        </tr>
+        <tr>
+          <td class="plat-name">Wear OS</td>
+          <td class="size-cell">— (uses Android .so)</td>
+          <td class="size-cell">—</td>
+          <td><span class="chip source">same as Android</span></td>
+          <td><a class="dl-link" href="docs.html#android">Instructions →</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="table-note">
+      "Compiled, unrun" means the build succeeds and produces a
+      correctly formatted binary, but couldn't be executed in the
+      environment that built it — there was no Wine, Android emulator,
+      or physical device on hand to run it against. Not a hedge: the
+      full verification story, artifact by artifact, is in
+      <a href="https://github.com/saji1970/ModelDB/blob/main/mdc-lite/dist/BUILD_INFO.md">BUILD_INFO.md</a>.
+    </p>
+  </section>
+
+  <section id="quickstart">
+    <div class="section-head">
+      <h2>Five functions. That's the whole API.</h2>
+      <span class="num">03 — QUICKSTART</span>
+    </div>
+    <div class="code-tabs">
+      <button class="active" data-lang="rust">Rust</button>
+      <button data-lang="c">C</button>
+      <button data-lang="swift">Swift</button>
+    </div>
+    <div class="code-panel">
+      <div class="lang-block active" data-lang="rust"><pre><span class="kw">use</span> mdc_lite::LiteStore;
+
+<span class="kw">let</span> key: [u8; 32] = <span class="c1">/* from platform secure storage */</span>;
+<span class="kw">let</span> store = LiteStore::open(<span class="str">"/path/to/store"</span>, key)?;
+
+store.put(<span class="str">"diary/2026-08-24"</span>, b<span class="str">"..."</span>)?;
+<span class="kw">let</span> value = store.get(<span class="str">"diary/2026-08-24"</span>)?;
+store.exists(<span class="str">"diary/2026-08-24"</span>);  <span class="c1">// bool</span>
+store.delete(<span class="str">"diary/2026-08-24"</span>)?;
+<span class="kw">let</span> all_keys = store.list_keys()?;  <span class="c1">// Vec&lt;String&gt;</span></pre></div>
+      <div class="lang-block" data-lang="c"><pre><span class="c1">#include "mdc_lite.h"</span>
+
+MdcLiteStore *store = mdc_lite_open(<span class="str">"/path/to/store"</span>, key);
+
+mdc_lite_put(store, <span class="str">"diary/2026-08-24"</span>, data, data_len);
+
+uint8_t *out; <span class="kw">size_t</span> out_len;
+mdc_lite_get(store, <span class="str">"diary/2026-08-24"</span>, &out, &out_len);
+<span class="c1">// ... use out[0..out_len) ...</span>
+mdc_lite_free_buffer(out, out_len);
+
+mdc_lite_close(store);</pre></div>
+      <div class="lang-block" data-lang="swift"><pre><span class="c1">// via the C header, bridged into Swift</span>
+<span class="kw">let</span> store = mdc_lite_open(<span class="str">"/path/to/store"</span>, keyPtr)
+
+mdc_lite_put(store, <span class="str">"diary/2026-08-24"</span>, valuePtr, valueLen)
+
+<span class="kw">var</span> outPtr: UnsafeMutablePointer&lt;UInt8&gt;?
+<span class="kw">var</span> outLen = 0
+mdc_lite_get(store, <span class="str">"diary/2026-08-24"</span>, &outPtr, &outLen)
+<span class="c1">// ... Data(bytes: outPtr!, count: outLen) ...</span>
+mdc_lite_free_buffer(outPtr, outLen)
+
+mdc_lite_close(store)</pre></div>
+    </div>
+  </section>
+
+  <section id="security">
+    <div class="section-head">
+      <h2>On "quantum encryption"</h2>
+      <span class="num">04 — SECURITY</span>
+    </div>
+    <div class="security-grid">
+      <div class="security-cell">
+        <span class="k">WHAT IT ISN'T</span>
+        <h3>Real QKD needs a fiber link</h3>
+        <p>Quantum key distribution transmits photons between two fixed physical endpoints over dedicated hardware. It's a network-link technology — there's no version of it that runs inside an app on a phone or a watch.</p>
+      </div>
+      <div class="security-cell">
+        <span class="k">WHAT IT IS</span>
+        <h3>256-bit symmetric, already enough</h3>
+        <p>Grover's algorithm only halves a symmetric key's effective strength — 256 bits stays enormous. Quantum computers threaten asymmetric crypto (RSA/ECC) instead, which this library doesn't use at all.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-grid">
+      <div class="mono">mdc-lite · Apache License 2.0 · part of the <a href="https://github.com/saji1970/ModelDB" style="color:var(--text-dim)">MDC</a> project</div>
+      <nav>
+        <a href="docs.html">Documentation</a>
+        <a href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite">Source</a>
+        <a href="https://github.com/saji1970/ModelDB/blob/main/mdc-lite/dist/BUILD_INFO.md">Build manifest</a>
+      </nav>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  document.querySelectorAll('.code-tabs button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var lang = btn.getAttribute('data-lang');
+      document.querySelectorAll('.code-tabs button').forEach(function (b) { b.classList.remove('active'); });
+      document.querySelectorAll('.lang-block').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.querySelector('.lang-block[data-lang="' + lang + '"]').classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

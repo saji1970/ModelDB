@@ -1,5 +1,10 @@
 # mdc-lite
 
+**[Website & docs](../docs/index.html)** - the same content as this
+README, plus the platform download/build matrix, laid out for browsing
+rather than reading top to bottom (once GitHub Pages is enabled for
+this repo, that link resolves to a real hosted site).
+
 A tiny embeddable encrypted key-value store, meant to be bundled directly
 into a mobile or wearable app - the native counterpart to
 [MDC](../mdc/)'s Python `StorageBackend` abstraction, built from scratch
@@ -89,22 +94,26 @@ Native (this machine, for `cargo test` / development):
 cargo build --release
 ```
 
-Verified in this environment: `cargo test` (14/14 passing) and a
-size-optimized native release build - **348 KB** for the stripped
-`.dylib` (`opt-level = "z"`, LTO, `panic = "abort"`, symbols stripped;
-see `Cargo.toml`'s `[profile.release]`). The `.a` static archive is
-larger (~7.6 MB) because it bundles unstripped object code for every
-dependency - that is *not* what ends up in your app; the final app
-linker performs dead-code elimination against the static lib the same
-way it does for the rest of your binary, so the real per-app cost is
-much closer to the `.dylib` number above.
+Verified in this environment: `cargo test` (14/14 passing), zero
+clippy warnings, and a size-optimized native release build - **345 KB**
+for the stripped `.dylib` (`opt-level = "z"`, LTO, `panic = "abort"`,
+symbols stripped; see `Cargo.toml`'s `[profile.release]`). The `.a`
+static archive is larger (~17 MB) because it bundles unstripped object
+code for every dependency - that is *not* what ends up in your app; the
+final app linker performs dead-code elimination against the static lib
+the same way it does for the rest of your binary, so the real per-app
+cost is much closer to the `.dylib` number above.
 
-**iOS/watchOS/Android cross-compilation is documented below but not
-executed in this environment** - it only has Xcode Command Line Tools
-(no iOS/watchOS SDK) and no Android NDK, so I could not verify an
-actual cross-compiled build end-to-end here. The instructions below are
-the standard, well-established approach; verify on a machine with the
-real toolchains before shipping.
+**Windows and Android are also actually cross-compiled and verified in
+this environment** - see [dist/BUILD_INFO.md](dist/BUILD_INFO.md) for
+exact sizes, toolchain versions, and precisely what "verified" does and
+doesn't mean for each (e.g. Windows: compiles and links to a real DLL,
+not executed - no Wine available here to run it). **iOS/watchOS is not
+buildable here at all** - Apple requires linking against the real
+SDK, which ships only inside full Xcode.app, and this environment has
+only the Command Line Tools (confirmed via `xcodebuild -version`
+failing). That's not a missing package, it's an Apple distribution
+requirement with no workaround; build it on a Mac with full Xcode.
 
 ### iOS + watchOS (needs rustup and full Xcode, not just Command Line Tools)
 
@@ -126,18 +135,52 @@ Combine the per-architecture `.a` static libraries into an XCFramework
 (`xcodebuild -create-xcframework`) and add `include/mdc_lite.h` as its
 bridging header for Swift to import.
 
+### Windows (verified: mingw-w64, no Visual Studio needed)
+
+```bash
+rustup target add x86_64-pc-windows-gnu
+brew install mingw-w64   # provides the x86_64-w64-mingw32-gcc linker
+
+cargo build --release --target x86_64-pc-windows-gnu
+```
+
+Produces `mdc_lite.dll` + `libmdc_lite.dll.a` (the import library to
+link against). This is a real, standard C ABI DLL - loadable from an
+MSVC-built consumer too, since the PE/C-ABI boundary doesn't care which
+compiler produced the DLL.
+
 ### Android + Wear OS (needs the Android NDK)
 
 ```bash
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+brew install --cask android-ndk
 
-# Point cargo at the NDK's per-architecture clang wrappers, e.g. via
-# cargo-ndk (`cargo install cargo-ndk`):
-cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o jniLibs build --release
+export ANDROID_NDK_HOME="/opt/homebrew/share/android-ndk"   # brew's install path
+NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+
+# API level 24 (Android 7.0+) minimum - adjust the version suffix below
+# to target a different minSdkVersion.
+export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android24-clang"
+export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+export CC_armv7_linux_androideabi="$NDK_BIN/armv7a-linux-androideabi24-clang"
+export AR_armv7_linux_androideabi="$NDK_BIN/llvm-ar"
+export CC_x86_64_linux_android="$NDK_BIN/x86_64-linux-android24-clang"
+export AR_x86_64_linux_android="$NDK_BIN/llvm-ar"
+
+cargo build --release --target aarch64-linux-android      # arm64-v8a (real devices)
+cargo build --release --target armv7-linux-androideabi    # armeabi-v7a (older devices)
+cargo build --release --target x86_64-linux-android        # x86_64 (emulator)
 ```
 
-Wear OS runs on Android, so the same `.so` outputs work for both - a
-watch face or Wear OS app links this the same way a phone app does.
+The `CC_*`/`AR_*` env vars matter beyond cargo's own `-C linker` flag:
+this crate's `blake3` dependency runs its own C build script (via the
+`cc` crate) that needs to find a working C compiler independently, and
+without them it fails with `ToolNotFound` even though the Rust side of
+the build would otherwise be configured correctly. Copy each `.so`
+into your app's `jniLibs/<abi>/` directory (`arm64-v8a`,
+`armeabi-v7a`, `x86_64`). Wear OS runs on Android, so the same outputs
+work for a watch face or Wear OS app the same way they do for a phone
+app.
 
 ## Platform key custody (not part of this crate)
 

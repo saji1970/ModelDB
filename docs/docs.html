@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mdc-lite Documentation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Installation, quickstart, and security model for mdc-lite — the embeddable encrypted key-value store.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14161b;
+    --paper: #eff1f0;
+    --seal: #b23a2e;
+    --amber: #c98a2c;
+    --steel: #3e6e8e;
+    --mid: #8b8f92;
+
+    --bg: var(--paper);
+    --bg-raised: #ffffff;
+    --text: var(--ink);
+    --text-dim: #52565c;
+    --border: #d7dad8;
+    --accent: var(--seal);
+    --accent-ink: #ffffff;
+    --code-bg: #1b1d22;
+    --code-text: #e7e5df;
+    --callout-bg: #f7ecd8;
+    --callout-text: #6b4f14;
+    --callout-border: #e3c483;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101216;
+      --bg-raised: #191b20;
+      --text: #eceae4;
+      --text-dim: #a3a7ad;
+      --border: #2b2e34;
+      --accent: #d9614f;
+      --accent-ink: #14161b;
+      --code-bg: #0b0c0f;
+      --code-text: #e7e5df;
+      --callout-bg: #2e2610;
+      --callout-text: #e0b45c;
+      --callout-border: #4a3c19;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101216;
+    --bg-raised: #191b20;
+    --text: #eceae4;
+    --text-dim: #a3a7ad;
+    --border: #2b2e34;
+    --accent: #d9614f;
+    --accent-ink: #14161b;
+    --code-bg: #0b0c0f;
+    --code-text: #e7e5df;
+    --callout-bg: #2e2610;
+    --callout-text: #e0b45c;
+    --callout-border: #4a3c19;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: "Newsreader", Georgia, serif; font-weight: 600; text-wrap: balance; }
+  code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  code { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 3px; padding: 1px 6px; font-size: 0.9em; }
+  a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #topbar {
+    position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 15px; text-decoration: none; color: var(--text); }
+  .brand .dot { color: var(--accent); }
+  #topbar nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; }
+  #topbar nav a:hover { color: var(--text); }
+
+  #layout { display: grid; grid-template-columns: 240px minmax(0, 720px); gap: 64px; max-width: 1040px; margin: 0 auto; padding: 48px 28px 100px; }
+  #sidebar { position: sticky; top: 80px; align-self: start; font-size: 14px; }
+  #sidebar .grp { margin-bottom: 22px; }
+  #sidebar .grp-label { font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--mid); margin-bottom: 8px; }
+  #sidebar a { display: block; color: var(--text-dim); text-decoration: none; padding: 4px 0; }
+  #sidebar a:hover, #sidebar a.active { color: var(--text); }
+
+  main h1 { font-size: 2.1rem; margin: 0 0 8px; }
+  main .lede { color: var(--text-dim); font-size: 1.05rem; margin: 0 0 40px; }
+  main section { margin-bottom: 52px; scroll-margin-top: 84px; }
+  main h2 { font-size: 1.5rem; margin: 0 0 16px; padding-top: 8px; border-top: 1px solid var(--border); padding-top: 24px; }
+  main section:first-of-type h2 { border-top: none; padding-top: 0; }
+  main h3 { font-size: 1.1rem; font-weight: 500; margin: 28px 0 10px; }
+  main p { margin: 0 0 14px; }
+  main ul, main ol { margin: 0 0 14px; padding-left: 22px; }
+  main li { margin-bottom: 6px; }
+
+  pre.code-block { background: var(--code-bg); color: var(--code-text); border-radius: 6px; padding: 18px 20px; overflow-x: auto; font-size: 13.5px; line-height: 1.7; margin: 0 0 16px; }
+  pre.code-block code { background: none; border: none; padding: 0; color: inherit; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin-bottom: 16px; }
+  table :is(th, td) { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--border); }
+  table th { font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 500; }
+
+  .callout { background: var(--callout-bg); color: var(--callout-text); border: 1px solid var(--callout-border); border-radius: 6px; padding: 16px 18px; font-size: 14.5px; margin-bottom: 16px; }
+  .callout strong { display: block; margin-bottom: 4px; font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  @media (max-width: 860px) {
+    #layout { grid-template-columns: minmax(0, 1fr); }
+    #sidebar { position: static; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+    #sidebar .grp { display: contents; }
+    #sidebar .grp-label { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <a class="brand" href="index.html">mdc<span class="dot">·</span>lite</a>
+  <nav><a href="index.html">← Back to overview</a></nav>
+</div>
+
+<div id="layout">
+  <aside id="sidebar">
+    <div class="grp">
+      <div class="grp-label">Get started</div>
+      <a href="#installation">Installation</a>
+      <a href="#quickstart">Quickstart</a>
+    </div>
+    <div class="grp">
+      <div class="grp-label">Reference</div>
+      <a href="#api">API reference</a>
+      <a href="#format">On-disk format</a>
+      <a href="#security">Security model</a>
+      <a href="#custody">Platform key custody</a>
+    </div>
+    <div class="grp">
+      <div class="grp-label">Building</div>
+      <a href="#ios">iOS &amp; watchOS</a>
+      <a href="#windows">Windows</a>
+      <a href="#android">Android &amp; Wear OS</a>
+    </div>
+    <div class="grp">
+      <div class="grp-label">More</div>
+      <a href="#limitations">What this isn't</a>
+    </div>
+  </aside>
+
+  <main>
+    <h1>Documentation</h1>
+    <p class="lede">Everything needed to add mdc-lite to an app: what it is, how to install it, and exactly what its encryption guarantees do and don't cover.</p>
+
+    <section id="installation">
+      <h2>Installation</h2>
+      <p>mdc-lite ships as a native library per platform, plus one shared C header (<code>mdc_lite.h</code>). There's no package manager integration yet — add the library and header to your project directly.</p>
+      <table>
+        <tr><th>Platform</th><th>What you add</th></tr>
+        <tr><td>Rust</td><td>Add the crate as a path or git dependency and <code>use mdc_lite::LiteStore;</code> directly — no FFI needed.</td></tr>
+        <tr><td>Swift (iOS/watchOS)</td><td>Combine the per-architecture <code>.a</code> files into an XCFramework, add <code>mdc_lite.h</code> as its bridging header. See <a href="#ios">Building → iOS &amp; watchOS</a>.</td></tr>
+        <tr><td>Kotlin (Android/Wear OS)</td><td>Drop each <code>libmdc_lite.so</code> into <code>app/src/main/jniLibs/&lt;abi&gt;/</code>, declare the five functions via <code>external fun</code> + <code>System.loadLibrary("mdc_lite")</code>.</td></tr>
+        <tr><td>C/C++</td><td>Link against the platform's static or dynamic library and <code>#include "mdc_lite.h"</code> directly.</td></tr>
+      </table>
+      <div class="callout"><strong>Where the builds come from</strong>Prebuilt macOS/Windows/Android artifacts, checksums, and exactly what's been verified vs. just compiled are listed in <a href="https://github.com/saji1970/ModelDB/blob/main/mdc-lite/dist/BUILD_INFO.md">dist/BUILD_INFO.md</a>. iOS/watchOS has no prebuilt artifact — Apple requires building against the real SDK, which only ships inside full Xcode.</div>
+    </section>
+
+    <section id="quickstart">
+      <h2>Quickstart</h2>
+      <p>The entire API is five operations. Opening a store is cheap — it just resolves a directory path and holds your key in memory, so there's no connection pool or background thread to manage.</p>
+      <pre class="code-block"><code>use mdc_lite::LiteStore;
+
+let key: [u8; 32] = /* from platform secure storage - see "Platform key custody" */;
+let store = LiteStore::open("/path/to/store/dir", key)?;
+
+store.put("diary/2026-08-24", b"went for a run, felt good")?;
+let value = store.get("diary/2026-08-24")?;
+store.exists("diary/2026-08-24");      // -> bool
+let all_keys = store.list_keys()?;      // -> Vec&lt;String&gt;
+store.delete("diary/2026-08-24")?;</code></pre>
+      <p>Through the C ABI, the same five calls:</p>
+      <pre class="code-block"><code>#include "mdc_lite.h"
+
+MdcLiteStore *store = mdc_lite_open("/path/to/store", key_ptr);
+
+mdc_lite_put(store, "diary/2026-08-24", value_ptr, value_len);
+
+uint8_t *out_ptr; size_t out_len;
+mdc_lite_get(store, "diary/2026-08-24", &out_ptr, &out_len);
+// ... read out_ptr[0..out_len) ...
+mdc_lite_free_buffer(out_ptr, out_len);   // always release what mdc_lite_get returns
+
+mdc_lite_delete(store, "diary/2026-08-24");
+mdc_lite_close(store);</code></pre>
+    </section>
+
+    <section id="api">
+      <h2>API reference</h2>
+      <table>
+        <tr><th>Rust</th><th>C</th><th>Behavior</th></tr>
+        <tr><td><code>LiteStore::open(dir, key)</code></td><td><code>mdc_lite_open</code></td><td>Creates the store directory if needed. Cheap — no I/O beyond that until the first operation.</td></tr>
+        <tr><td><code>.put(key, value)</code></td><td><code>mdc_lite_put</code></td><td>Encrypts and writes, overwriting any existing entry for that key. Writes via a temp file + rename, so a kill mid-write never leaves a corrupted entry.</td></tr>
+        <tr><td><code>.get(key)</code></td><td><code>mdc_lite_get</code></td><td>Decrypts and returns the value. Fails loud (a distinct error, never silently wrong bytes) if the key is wrong or the file was tampered with.</td></tr>
+        <tr><td><code>.exists(key)</code></td><td><code>mdc_lite_exists</code></td><td>A file-existence check — doesn't decrypt anything.</td></tr>
+        <tr><td><code>.delete(key)</code></td><td><code>mdc_lite_delete</code></td><td>Idempotent — deleting a key that isn't there is not an error.</td></tr>
+        <tr><td><code>.list_keys()</code></td><td>—</td><td>Every logical key currently stored. Skips any entry it can't decrypt rather than failing the whole call — see <a href="#security">Security model</a>.</td></tr>
+      </table>
+    </section>
+
+    <section id="format">
+      <h2>On-disk format</h2>
+      <p>One file per entry, named by a keyed BLAKE3 hash of the logical key (hex-encoded) — so the filename itself never reveals what you stored. Each file's contents:</p>
+      <pre class="code-block"><code>[ 24-byte nonce ][ ciphertext ][ 16-byte auth tag ]</code></pre>
+      <p>The plaintext sealed inside that ciphertext is:</p>
+      <pre class="code-block"><code>[ u16 LE key_len ][ key_bytes ][ value_bytes ]</code></pre>
+      <p>The logical key travels <em>inside</em> the encrypted payload rather than the filename — that's what lets <code>list_keys()</code> recover key names after decrypting, while a raw directory listing on its own reveals nothing.</p>
+    </section>
+
+    <section id="security">
+      <h2>Security model</h2>
+      <p>Every value and every key name is encrypted with <strong>XChaCha20-Poly1305</strong> — a 256-bit-key, 192-bit-nonce authenticated cipher. A fresh random nonce is generated for every write; XChaCha20's 192-bit nonce space makes that safe with no persistent counter to manage, unlike AES-GCM's narrower 96-bit nonce.</p>
+      <p>This library never generates, stores, or has any opinion about the key's custody. Losing it is equivalent to losing the data — there's no recovery path, by design. See <a href="#custody">Platform key custody</a> for how the key itself should actually be obtained and stored.</p>
+      <h3>On "quantum encryption"</h3>
+      <p>Real quantum key distribution (QKD) transmits photons over dedicated fiber or free-space links between two fixed endpoints using specialized hardware — it's a network-link technology, not something deployable inside an app.</p>
+      <p>What actually matters for data sitting on a device is symmetric key strength. Grover's algorithm — the relevant quantum speedup — only halves an <em>n</em>-bit key's effective strength, so 256 bits (what XChaCha20-Poly1305 and AES-256 both use) stays enormous. Quantum computers meaningfully threaten <em>asymmetric</em> crypto instead (RSA/ECC, via Shor's algorithm), which this library doesn't use anywhere — there's no key exchange happening here, since this is a local, standalone store.</p>
+      <h3>Two deliberately different failure modes</h3>
+      <p><code>get(key)</code> is a specific lookup — if it can't be decrypted (wrong key, tampering, corruption), that's meaningful signal, so it fails loud. <code>list_keys()</code> is an enumeration — letting one bad or foreign file hide every other valid key would be a worse outcome on a device where you generally want the app to keep working, so it silently skips anything it can't decrypt.</p>
+    </section>
+
+    <section id="custody">
+      <h2>Platform key custody</h2>
+      <p>Not part of this crate by design — real key security on a phone or watch comes from the platform's own secure hardware. These sketches are illustrative starting points, not copy-paste-ready code.</p>
+      <h3>iOS / watchOS — Keychain</h3>
+      <pre class="code-block"><code>import Security
+
+func getOrCreateStoreKey() -> Data {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrAccount as String: "mdc-lite-store-key",
+        kSecReturnData as String: true,
+    ]
+    var item: AnyObject?
+    if SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess {
+        return item as! Data
+    }
+    var keyBytes = Data(count: 32)
+    _ = keyBytes.withUnsafeMutableBytes {
+        SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!)
+    }
+    let addQuery: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrAccount as String: "mdc-lite-store-key",
+        kSecValueData as String: keyBytes,
+        kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+    ]
+    SecItemAdd(addQuery as CFDictionary, nil)
+    return keyBytes
+}</code></pre>
+      <h3>Android / Wear OS — Keystore-backed EncryptedSharedPreferences</h3>
+      <pre class="code-block"><code>import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+
+fun getOrCreateStoreKey(context: Context): ByteArray {
+    val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+    val prefs = EncryptedSharedPreferences.create(
+        context, "mdc_lite_key_prefs", masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    )
+    prefs.getString("store_key", null)?.let { return Base64.decode(it, Base64.NO_WRAP) }
+
+    val key = ByteArray(32).also { SecureRandom().nextBytes(it) }
+    prefs.edit().putString("store_key", Base64.encodeToString(key, Base64.NO_WRAP)).apply()
+    return key
+}</code></pre>
+    </section>
+
+    <section id="ios">
+      <h2>Building for iOS &amp; watchOS</h2>
+      <div class="callout"><strong>Requires full Xcode</strong>Not just the Command Line Tools — Apple only ships the iOS/watchOS SDK inside Xcode.app itself. There's no workaround; it's a distribution requirement, not a missing package.</div>
+      <pre class="code-block"><code>rustup target add aarch64-apple-ios aarch64-apple-ios-sim \
+  aarch64-apple-watchos aarch64-apple-watchos-sim
+
+cargo build --release --target aarch64-apple-ios          # device
+cargo build --release --target aarch64-apple-ios-sim      # Apple Silicon simulator
+cargo build --release --target aarch64-apple-watchos      # watch device
+cargo build --release --target aarch64-apple-watchos-sim  # watch simulator</code></pre>
+      <p>watchOS targets are Rust Tier 3 (less mature than iOS's) — some toolchain versions need <code>-Z build-std</code> on nightly to build <code>core</code>/<code>alloc</code> for them. Combine the resulting <code>.a</code> files into an XCFramework with <code>xcodebuild -create-xcframework</code>, and use <code>mdc_lite.h</code> as its bridging header.</p>
+    </section>
+
+    <section id="windows">
+      <h2>Building for Windows</h2>
+      <p>Verified in this project's own build environment — no Visual Studio required, just mingw-w64:</p>
+      <pre class="code-block"><code>rustup target add x86_64-pc-windows-gnu
+brew install mingw-w64   # or your platform's mingw-w64 package
+
+cargo build --release --target x86_64-pc-windows-gnu</code></pre>
+      <p>Produces <code>mdc_lite.dll</code> plus <code>libmdc_lite.dll.a</code> (the import library to link against). It's a standard C ABI DLL — loadable from an MSVC-built consumer too, since the PE/C-ABI boundary doesn't care which compiler produced it.</p>
+    </section>
+
+    <section id="android">
+      <h2>Building for Android &amp; Wear OS</h2>
+      <p>Verified end-to-end for all three ABIs below using the real Android NDK:</p>
+      <pre class="code-block"><code>rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+brew install --cask android-ndk
+
+export ANDROID_NDK_HOME="/opt/homebrew/share/android-ndk"
+NDK_BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+
+# API level 24 (Android 7.0+) - change the version suffix for a
+# different minSdkVersion.
+export CC_aarch64_linux_android="$NDK_BIN/aarch64-linux-android24-clang"
+export AR_aarch64_linux_android="$NDK_BIN/llvm-ar"
+export CC_armv7_linux_androideabi="$NDK_BIN/armv7a-linux-androideabi24-clang"
+export AR_armv7_linux_androideabi="$NDK_BIN/llvm-ar"
+export CC_x86_64_linux_android="$NDK_BIN/x86_64-linux-android24-clang"
+export AR_x86_64_linux_android="$NDK_BIN/llvm-ar"
+
+cargo build --release --target aarch64-linux-android    # arm64-v8a
+cargo build --release --target armv7-linux-androideabi   # armeabi-v7a
+cargo build --release --target x86_64-linux-android       # emulator</code></pre>
+      <p>The <code>CC_*</code>/<code>AR_*</code> environment variables matter beyond cargo's own linker flag: this crate's BLAKE3 dependency runs its own C build script that needs to find a compiler independently, and fails with <code>ToolNotFound</code> without them even when the Rust side is otherwise configured correctly. Copy each resulting <code>.so</code> into <code>jniLibs/&lt;abi&gt;/</code> — Wear OS runs on Android, so the same outputs work for a watch face the same way they do for a phone app.</p>
+    </section>
+
+    <section id="limitations">
+      <h2>What this deliberately is not</h2>
+      <ul>
+        <li>No query language, no schema, no filters — a raw encrypted key-value store. Layer your own indexing on top if you need one.</li>
+        <li>No compaction or space reclamation beyond deleting a file on <code>delete()</code> — no background process on a battery/resource-constrained device.</li>
+        <li>No multi-device sync, and no network code at all.</li>
+        <li>No built-in key rotation — re-<code>put()</code> everything under a new <code>LiteStore</code> opened with a new key, then delete the old store directory.</li>
+      </ul>
+    </section>
+  </main>
+</div>
+
+</body>
+</html>
