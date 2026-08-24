@@ -1,5 +1,7 @@
 # Molecular Data Center (MDC)
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 Version 1.0 - research prototype. Full build specification: [CLAUDE.md](CLAUDE.md).
 
 ## What it is
@@ -291,3 +293,8 @@ the Explorer's chat panel). Not yet built: benchmarks (Phase K). The
 merchants CRUD engine and the analytics conversation path (above) are a
 separate, earlier system - see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 for why the two aren't merged.
+
+## License
+
+Apache License 2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). Third-party
+dependency licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

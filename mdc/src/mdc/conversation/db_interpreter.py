@@ -86,27 +86,35 @@ def _handle_create_table(state: StorageConversationState, manager: DatabaseManag
 
 def _handle_describe_table(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
     assert command.table_name is not None
-    handle = manager.get(state.current_database)
+    db_name = command.database_name or state.current_database
+    try:
+        handle = manager.get(db_name)
+    except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+        return TurnResult(str(exc))
     try:
         collection = handle.schema_registry.get_collection(command.table_name)
     except CollectionNotFoundError as exc:
         return TurnResult(str(exc))
     rows = [{"field": f.name, "type": f.datatype, "required": f.required} for f in collection.fields.values()]
-    return TurnResult(f'Table "{command.table_name}" in "{state.current_database}": {len(rows)} field(s).', data=rows)
+    return TurnResult(f'Table "{command.table_name}" in "{db_name}": {len(rows)} field(s).', data=rows)
 
 
 def _handle_show_data(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
     assert command.table_name is not None
-    handle = manager.get(state.current_database)
+    db_name = command.database_name or state.current_database
+    try:
+        handle = manager.get(db_name)
+    except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+        return TurnResult(str(exc))
     try:
         result = handle.engine.read(ReadOperation(collection=command.table_name, filters=[], limit=_SHOW_DATA_LIMIT))
     except CollectionNotFoundError as exc:
         return TurnResult(str(exc))
     if result.count == 0:
-        return TurnResult(f'No rows in "{command.table_name}".')
+        return TurnResult(f'No rows in "{command.table_name}" ({db_name}).')
     rows = [{"record_id": record.record_id, **record.fields} for record in result.records]
     suffix = f" (showing first {_SHOW_DATA_LIMIT})" if result.count == _SHOW_DATA_LIMIT else ""
-    return TurnResult(f'{result.count} row(s) in "{command.table_name}"{suffix}.', data=rows)
+    return TurnResult(f'{result.count} row(s) in "{command.table_name}" ({db_name}){suffix}.', data=rows)
 
 
 def _handle_insert(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
@@ -120,6 +128,75 @@ def _handle_insert(state: StorageConversationState, manager: DatabaseManager, co
     return TurnResult(f'Inserted {record.record_id} into "{command.table_name}".', data={"record_id": record.record_id, **record.fields})
 
 
+_FIND_LIMIT = 20
+# Preferred fields for an amount constraint ("under 20K") when a row has
+# more than one numeric field - falls back to any numeric field if none
+# of these are present, since a table isn't guaranteed to name its
+# "the" price field any particular way.
+_AMOUNT_FIELD_NAMES = {"price", "cost", "amount", "balance", "value", "total", "settlement_balance"}
+
+
+def _numeric_candidates(fields: dict) -> list[float]:
+    numeric = {k: v for k, v in fields.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    preferred = [v for k, v in numeric.items() if k.lower() in _AMOUNT_FIELD_NAMES]
+    return preferred or list(numeric.values())
+
+
+def _row_matches(fields: dict, term: str | None, min_value: float | None, max_value: float | None) -> bool:
+    if min_value is not None or max_value is not None:
+        candidates = _numeric_candidates(fields)
+        if not any((min_value is None or v >= min_value) and (max_value is None or v <= max_value) for v in candidates):
+            return False
+    if term:
+        tokens = [t for t in term.lower().split() if len(t) >= 2]
+        if tokens:
+            haystack = " ".join(str(v).lower() for v in fields.values())
+            if not any(token in haystack for token in tokens):
+                return False
+    return True
+
+
+def _handle_find(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
+    if command.database_name is not None:
+        try:
+            manager.get(command.database_name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            return TurnResult(str(exc))
+        database_names = [command.database_name]
+    else:
+        database_names = manager.list_names()
+
+    rows: list[dict] = []
+    documents: list[dict] = []
+    for db_name in database_names:
+        handle = manager.get(db_name)
+        table_names = [command.table_name] if command.table_name else handle.schema_registry.list_collections()
+        for table_name in table_names:
+            if not handle.schema_registry.has_collection(table_name):
+                continue
+            result = handle.engine.read(ReadOperation(collection=table_name, filters=[]))
+            for record in result.records:
+                if _row_matches(record.fields, command.search_term, command.min_value, command.max_value):
+                    rows.append({"database": db_name, "table": table_name, "record_id": record.record_id, **record.fields})
+
+        if command.search_term:
+            for doc in handle.object_service.search_documents(command.search_term):
+                documents.append({"database": db_name, **doc})
+
+    total = len(rows) + len(documents)
+    term_desc = f' "{command.search_term}"' if command.search_term else ""
+    if total == 0:
+        return TurnResult(f"No matches for{term_desc}." if term_desc else "No matches.")
+
+    parts = []
+    if rows:
+        parts.append(f"{len(rows)} row(s)")
+    if documents:
+        parts.append(f"{len(documents)} document(s)")
+    suffix = f" (showing first {_FIND_LIMIT})" if total > _FIND_LIMIT else ""
+    return TurnResult(f"{' and '.join(parts)} matched{term_desc}{suffix}.", data=(rows + documents)[:_FIND_LIMIT])
+
+
 _HANDLERS = {
     DatabaseIntent.CREATE_DATABASE: _handle_create_database,
     DatabaseIntent.USE_DATABASE: _handle_use_database,
@@ -129,4 +206,5 @@ _HANDLERS = {
     DatabaseIntent.DESCRIBE_TABLE: _handle_describe_table,
     DatabaseIntent.SHOW_DATA: _handle_show_data,
     DatabaseIntent.INSERT: _handle_insert,
+    DatabaseIntent.FIND: _handle_find,
 }

@@ -17,6 +17,7 @@ from mdc.storage_intelligence.analyzer import AccessProfile
 from mdc.storage_intelligence.router import (
     DataIntegrityError,
     ObjectNotFoundError,
+    ObjectUnavailableError,
     StorageRouter,
     build_default_router,
 )
@@ -136,6 +137,42 @@ def test_retrieve_can_skip_integrity_check(router: StorageRouter):
     router.backends[entry.storage_tier].put(entry.location, b"corrupted!", metadata={"object_id": obj.object_id})
 
     assert router.retrieve(obj.object_id, verify_integrity=False) == b"corrupted!"
+
+
+# -- HOT tier survives a lookup after the in-memory backend is emptied ----------
+#
+# `MemoryStorageBackend` is deliberately not persisted across a process
+# restart (its own module docstring), but `ObjectIndex` always rides the
+# durable backend - so a fresh process can end up with an index entry
+# that still claims HOT for an object whose bytes are simply gone. This
+# reproduces exactly that (swap in a fresh, empty `MemoryStorageBackend`
+# without touching the index, the same shape a real restart produces)
+# and checks it surfaces as a clean, catchable error instead of an
+# unhandled `KeyError` bubbling out of the storage layer.
+
+def test_retrieve_after_hot_backend_loses_its_content_raises_a_clean_error(router: StorageRouter):
+    strategy = StorageStrategyEngine().select(build_profile(DataType.AI_MODEL, b"weights"), AccessProfile(access_frequency=100.0))
+    obj = _make_object(DataType.AI_MODEL, 7)
+    router.store(obj, b"weights", strategy)
+    assert router.index.get(obj.object_id).storage_tier is StorageTier.HOT
+
+    router.backends[StorageTier.HOT] = MemoryStorageBackend()  # simulates a restart
+
+    with pytest.raises(ObjectUnavailableError) as excinfo:
+        router.retrieve(obj.object_id)
+    assert excinfo.value.tier is StorageTier.HOT
+    assert isinstance(excinfo.value, ObjectNotFoundError)  # existing broad "not found" handlers still catch it
+
+
+def test_move_off_an_emptied_hot_backend_also_raises_a_clean_error(router: StorageRouter):
+    strategy = StorageStrategyEngine().select(build_profile(DataType.AI_MODEL, b"weights"), AccessProfile(access_frequency=100.0))
+    obj = _make_object(DataType.AI_MODEL, 7)
+    router.store(obj, b"weights", strategy)
+
+    router.backends[StorageTier.HOT] = MemoryStorageBackend()  # simulates a restart
+
+    with pytest.raises(ObjectUnavailableError):
+        router.move(obj.object_id, StorageTier.WARM)
 
 
 def test_operating_on_an_unknown_object_id_raises_not_found(router: StorageRouter):

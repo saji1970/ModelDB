@@ -100,6 +100,31 @@ def test_followup_country_narrows_previous_query(engine: MDCDataEngine):
     assert result.context.clarification_required is False
 
 
+# -- symbol operators (">", ">=", "<", "<=", "=") alongside the textual ones ----
+
+def test_symbol_operator_matches_textual_phrase_equivalent(engine: MDCDataEngine):
+    state_symbol = _state()
+    symbol_result = process_turn(state_symbol, "Show merchants with settlement balance > 10000 USD", ontology, llm, engine)
+
+    state_phrase = _state()
+    phrase_result = process_turn(state_phrase, "Show merchants with settlement balance above 10000 USD", ontology, llm, engine)
+
+    assert symbol_result.context.conditions[0].field == phrase_result.context.conditions[0].field
+    assert symbol_result.context.conditions[0].operator == phrase_result.context.conditions[0].operator == ">"
+    assert symbol_result.context.conditions[0].value == phrase_result.context.conditions[0].value == 10000.0
+
+
+@pytest.mark.parametrize(
+    ("symbol", "operator"),
+    [(">=", ">="), ("<=", "<="), ("<", "<"), ("=", "=")],
+)
+def test_symbol_operators_map_to_the_right_operator(engine: MDCDataEngine, symbol: str, operator: str):
+    state = _state()
+    result = process_turn(state, f"Show merchants with settlement balance {symbol} 10000", ontology, llm, engine)
+    assert result.context.conditions[0].operator == operator
+    assert result.context.conditions[0].value == 10000.0
+
+
 # -- TEST 005: follow-up adds sort, keeps prior filters -------------------------
 
 def test_followup_sort_adds_order_by_and_keeps_filters(engine: MDCDataEngine):

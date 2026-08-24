@@ -9,13 +9,14 @@ from pathlib import Path
 
 import pytest
 
+from mdc.classification.data_type import DataType
 from mdc.models.errors import ModelNotFoundError, TensorNotFoundError
 from mdc.models.extractor import ExtractedTensor, InvalidSafetensorsError, parse_safetensors, split_tensor_into_blocks
 from mdc.models.model_store import ModelStore
 from mdc.storage.duckdb_store import DuckDBStore
 from mdc.storage_intelligence.policy import StoragePolicy
 from mdc.storage_intelligence.router import build_default_router
-from mdc.storage_intelligence.strategy import StorageStrategyEngine
+from mdc.storage_intelligence.strategy import StorageStrategyEngine, StorageTier
 
 
 def _floats(values) -> bytes:
@@ -171,3 +172,48 @@ def test_two_tensors_in_the_same_model_get_independent_checksums(model_store: Mo
     a = model_store.retrieve_tensor(manifest.model_id, "a")
     b = model_store.retrieve_tensor(manifest.model_id, "b")
     assert a != b
+
+
+# -- move_model: cascades to every tensor block, not just the manifest -------------
+
+def test_move_model_moves_manifest_and_every_tensor_block(model_store: ModelStore):
+    rows, cols = 100, 64  # forces layer_0.k to split into multiple blocks
+    content = _build_safetensors({
+        "layer_0.q": ([4], _floats([1.0, 2.0, 3.0, 4.0])),
+        "layer_0.k": ([rows, cols], _floats(range(rows * cols))),
+    })
+    manifest = model_store.store_model(content, "tiny-model")
+
+    q_entries = model_store.router.index.search(tensor_id=f"{manifest.model_id}:layer_0.q")
+    k_entries = model_store.router.index.search(tensor_id=f"{manifest.model_id}:layer_0.k")
+    assert len(k_entries) > 1  # actually exercises the multi-block cascade
+
+    moved = model_store.move_model(manifest.model_id, StorageTier.HOT)
+    assert moved == 1 + len(q_entries) + len(k_entries)  # manifest + every tensor block
+
+    manifest_entry = model_store.router.index.get(manifest.model_id)
+    assert manifest_entry.storage_tier is StorageTier.HOT
+    for tensor_id in (f"{manifest.model_id}:layer_0.q", f"{manifest.model_id}:layer_0.k"):
+        for entry in model_store.router.index.search(tensor_id=tensor_id):
+            assert entry.storage_tier is StorageTier.HOT
+
+    # The weights are still byte-for-byte correct after the tier move -
+    # not just relocated bookkeeping, the actual retrievable content.
+    assert model_store.retrieve_tensor(manifest.model_id, "layer_0.k") == _floats(range(rows * cols))
+
+
+def test_move_model_does_not_touch_a_different_models_tensors(model_store: ModelStore):
+    content_a = _build_safetensors({"w": ([2], _floats([1.0, 2.0]))})
+    content_b = _build_safetensors({"w": ([2], _floats([3.0, 4.0]))})
+    manifest_a = model_store.store_model(content_a, "model-a")
+    manifest_b = model_store.store_model(content_b, "model-b")
+
+    model_store.move_model(manifest_a.model_id, StorageTier.HOT)
+
+    b_entry = model_store.router.index.search(tensor_id=f"{manifest_b.model_id}:w")[0]
+    assert b_entry.storage_tier is not StorageTier.HOT
+
+
+def test_move_unknown_model_raises(model_store: ModelStore):
+    with pytest.raises(ModelNotFoundError):
+        model_store.move_model("NOPE-0000000000", StorageTier.HOT)

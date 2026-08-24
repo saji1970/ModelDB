@@ -76,7 +76,9 @@ Database examples:
   list databases
   create table products with sku string, name string, price decimal
   show data in products
+  show data in products in database mytest   (works without switching)
   insert into products sku=ABC123, name=Widget, price=9.99
+  find widget under 20000                    (every database's tables + documents)
 
 Commands:
   /help

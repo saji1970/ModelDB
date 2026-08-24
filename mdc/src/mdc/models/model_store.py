@@ -29,7 +29,7 @@ from mdc.model.object import MDCObject, generate_object_id
 from mdc.storage_intelligence.analyzer import AccessProfile
 from mdc.storage_intelligence.policy import DEFAULT_POLICY
 from mdc.storage_intelligence.router import ObjectNotFoundError, StorageRouter
-from mdc.storage_intelligence.strategy import StorageStrategyEngine
+from mdc.storage_intelligence.strategy import StorageStrategyEngine, StorageTier
 
 
 def _utcnow() -> datetime:
@@ -136,3 +136,26 @@ class ModelStore:
 
         ordered = sorted(entries, key=lambda entry: entry.block_id or "")
         return b"".join(self.router.retrieve(entry.object_id) for entry in ordered)
+
+    def move_model(self, model_id: str, tier: StorageTier) -> int:
+        """Move a model's manifest AND every block of every one of its
+        tensors to `tier` in one call.
+
+        A model is really N+1 separate index entries - the manifest plus
+        one entry per tensor block (each tensor gets its own tier
+        decision at upload time, `_store_tensor` above) - so a plain
+        `router.move(model_id, tier)` only relocates the small manifest
+        JSON, silently leaving the actual weight bytes wherever they
+        already were. Returns the total number of objects actually
+        moved (manifest + every tensor block).
+        """
+        self.get_manifest(model_id)  # ModelNotFoundError before touching anything
+        self.router.move(model_id, tier)
+        moved = 1
+
+        tensor_prefix = f"{model_id}:"
+        for entry in self.router.index.search(object_type=DataType.TENSOR):
+            if entry.tensor_id is not None and entry.tensor_id.startswith(tensor_prefix):
+                self.router.move(entry.object_id, tier)
+                moved += 1
+        return moved

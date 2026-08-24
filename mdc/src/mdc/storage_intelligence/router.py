@@ -39,6 +39,31 @@ class ObjectNotFoundError(Exception):
         self.object_id = object_id
 
 
+class ObjectUnavailableError(ObjectNotFoundError):
+    """The index knows about `object_id` and says it lives at `tier`, but
+    that tier's backend doesn't actually have its bytes - in practice
+    this means HOT (`MemoryStorageBackend`, deliberately not persisted
+    across a process restart - see that module's docstring) claimed an
+    object that a prior process moved there, then restarted. A subclass
+    of `ObjectNotFoundError` on purpose: every existing caller that
+    already catches "not found" (there are many, across the API, chat,
+    and CLI) handles this correctly with no changes, while call sites
+    that want the more specific message can still catch this directly."""
+
+    def __init__(self, object_id: str, tier: StorageTier):
+        # Not "try again" - retrying a move/read hits this exact same
+        # error, since the bytes themselves are gone, not just slow to
+        # fetch. The only way back is re-storing the content from
+        # whatever originally produced it.
+        Exception.__init__(
+            self,
+            f"{object_id!r} is indexed at {tier.value} but its content is gone - "
+            f"likely lost from an in-memory tier across a restart. It must be re-uploaded/re-stored; moving or reading it again will not recover it.",
+        )
+        self.object_id = object_id
+        self.tier = tier
+
+
 class DataIntegrityError(Exception):
     """Raised when a retrieved object's checksum doesn't match what was
     recorded at write time (CLAUDE-STORAGE.md section 39)."""
@@ -95,7 +120,10 @@ class StorageRouter:
     def retrieve(self, object_id: str, *, verify_integrity: bool = True) -> bytes:
         entry = self._require_entry(object_id)
         backend = self.backends[entry.storage_tier]
-        physical_bytes = backend.get(entry.location)
+        try:
+            physical_bytes = backend.get(entry.location)
+        except KeyError:
+            raise ObjectUnavailableError(object_id, entry.storage_tier) from None
         try:
             content = decompress(physical_bytes, entry.compression)
         except CompressionError as exc:
@@ -128,7 +156,10 @@ class StorageRouter:
         # that case the bytes are already in the right place, so
         # put-then-delete would just write and immediately erase them.
         if old_backend is not new_backend:
-            physical_bytes = old_backend.get(entry.location)
+            try:
+                physical_bytes = old_backend.get(entry.location)
+            except KeyError:
+                raise ObjectUnavailableError(object_id, entry.storage_tier) from None
             new_backend.put(entry.location, physical_bytes, metadata={"object_id": object_id, "object_type": entry.object_type.value})
             old_backend.delete(entry.location)
 

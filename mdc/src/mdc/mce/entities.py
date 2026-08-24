@@ -55,6 +55,8 @@ OPERATOR_PHRASES: list[tuple[str, str]] = sorted(
     reverse=True,
 )
 
+_SYMBOL_OPERATORS: list[tuple[str, str]] = [(">=", ">="), ("<=", "<="), (">", ">"), ("<", "<"), ("=", "=")]
+
 NUMBER_PATTERN = re.compile(r"\d[\d,]*(?:\.\d+)?")
 TOP_N_PATTERN = re.compile(r"\btop\s+(\d+)\b")
 BY_FIELD_PATTERN = re.compile(r"\bby\s+([a-z][a-z ]*)")
@@ -91,6 +93,24 @@ def _extract_amount_condition(normalized: str, field_name: str, datatype: str) -
             datatype=datatype, confidence=1.0, source="user_input",
         )
         return condition, currency
+
+    # Symbol operators ("balance > 6000") - checked only after every
+    # textual phrase above has failed to match, ">="/"<=" ahead of their
+    # single-character prefixes so "balance >= 6000" resolves to ">=" (the
+    # ">" pattern can never falsely match it either way: the character
+    # right after ">" would be "=", not whitespace/a digit, so its own
+    # `\s*\d` requirement already fails).
+    for symbol, operator in _SYMBOL_OPERATORS:
+        match = re.search(re.escape(symbol) + r"\s*(\d[\d,]*(?:\.\d+)?)", normalized)
+        if not match:
+            continue
+        value = float(match.group(1).replace(",", ""))
+        condition = Condition(
+            field=field_name, operator=operator, value=value,
+            datatype=datatype, confidence=1.0, source="user_input",
+        )
+        return condition, None
+
     return None, None
 
 

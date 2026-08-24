@@ -182,8 +182,24 @@ def create_app(manager: DatabaseManager) -> FastAPI:
     @app.post("/objects/{object_id}/move")
     def move_object(object_id: str, body: MoveRequest) -> dict[str, Any]:
         try:
+            metadata = service.get_metadata(object_id)
+
+            if metadata["type"] == DataType.AI_MODEL.value:
+                # A model is its manifest plus one index entry per tensor
+                # block, each independently tiered - see
+                # `ModelStore.move_model`'s docstring for why a plain
+                # `service.move()` would silently leave the actual weight
+                # bytes behind.
+                moved = service.model_store.move_model(object_id, body.tier)
+                return {"object_id": object_id, "storage_tier": body.tier.value, "objects_moved": moved}
+
             return service.move(object_id, body.tier)
-        except ObjectNotFoundError as exc:
+        except (ObjectNotFoundError, ModelNotFoundError) as exc:
+            # `move_model` confirms the model exists via `get_manifest`
+            # first, which raises `ModelNotFoundError` (not
+            # `ObjectNotFoundError`) if its content can't be read back -
+            # e.g. it's indexed at HOT but that tier's in-memory backend
+            # lost it across a restart.
             raise _not_found(exc) from exc
 
     @app.post("/objects/{object_id}/optimize")

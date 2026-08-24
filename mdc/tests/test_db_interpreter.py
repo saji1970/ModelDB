@@ -149,6 +149,33 @@ def test_show_data_on_unknown_table_reports_error(state, manager):
     assert "nope" in result.message.lower() or "not found" in result.message.lower()
 
 
+def test_show_data_with_explicit_database_qualifier_does_not_require_switching(state, manager):
+    _turn(state, manager, "create database mytest")
+    _turn(state, manager, "create table products with sku string")
+    _turn(state, manager, "insert into products sku=ABC123")
+    _turn(state, manager, "use database default")
+    assert state.current_database == "default"
+
+    result = _turn(state, manager, "show data in products in database mytest")
+    assert state.current_database == "default"  # the qualifier reads without switching
+    assert result.data[0]["sku"] == "ABC123"
+
+
+def test_describe_table_with_explicit_database_qualifier(state, manager):
+    _turn(state, manager, "create database mytest")
+    _turn(state, manager, "create table products with sku string, price decimal")
+    _turn(state, manager, "use database default")
+
+    result = _turn(state, manager, "describe table products in database mytest")
+    fields = {row["field"] for row in result.data}
+    assert fields == {"sku", "price"}
+
+
+def test_show_data_qualifier_unknown_database_reports_error(state, manager):
+    result = _turn(state, manager, "show data in products in database nope")
+    assert "nope" in result.message.lower() or "not found" in result.message.lower()
+
+
 def test_insert_into_unknown_table_reports_error(state, manager):
     _turn(state, manager, "create database mytest")
     result = _turn(state, manager, "insert into nope sku=ABC123")
@@ -166,3 +193,71 @@ def test_data_inserted_in_one_database_is_invisible_in_another(state, manager):
     _turn(state, manager, "create table widgets with name string")
     result = _turn(state, manager, "show data in widgets")
     assert "no rows" in result.message.lower()
+
+
+# -- FIND (universal search across every database/table + documents) -----------------
+
+def _seed_products(state, manager, db_name):
+    _turn(state, manager, f"create database {db_name}")
+    _turn(state, manager, "create table products with sku string, name string, price decimal")
+    _turn(state, manager, "insert into products sku=ABC123, name=Widget, price=9.99")
+    _turn(state, manager, "insert into products sku=XYZ999, name=Gadget, price=25000")
+
+
+def test_find_matches_term_and_price_constraint_without_switching(state, manager):
+    _seed_products(state, manager, "mytest")
+    state.current_database = "default"
+
+    result = _turn(state, manager, "I want to find products widget under 20 K")
+    assert state.current_database == "default"  # find never switches
+    assert len(result.data) == 1
+    assert result.data[0]["sku"] == "ABC123"
+    assert result.data[0]["database"] == "mytest"
+    assert result.data[0]["table"] == "products"
+
+
+def test_find_excludes_rows_outside_the_constraint(state, manager):
+    _seed_products(state, manager, "mytest")
+    result = _turn(state, manager, "find widget under 20000")
+    skus = {row["sku"] for row in result.data}
+    assert skus == {"ABC123"}
+
+
+def test_find_over_and_under_together_is_a_range(state, manager):
+    _seed_products(state, manager, "mytest")
+    result = _turn(state, manager, "find over 5 under 15")
+    skus = {row["sku"] for row in result.data}
+    assert skus == {"ABC123"}  # 9.99 is in (5, 15); 25000 is not
+
+
+def test_find_searches_across_multiple_databases(state, manager):
+    _seed_products(state, manager, "db_a")
+    _turn(state, manager, "create database db_b")
+    _turn(state, manager, "create table gizmos with name string, price decimal")
+    _turn(state, manager, "insert into gizmos name=Widget Pro, price=15")
+
+    result = _turn(state, manager, "find widget")
+    databases = {row["database"] for row in result.data}
+    assert databases == {"db_a", "db_b"}
+
+
+def test_find_scoped_to_explicit_database_and_table(state, manager):
+    _seed_products(state, manager, "db_a")
+    _turn(state, manager, "create database db_b")
+    _turn(state, manager, "create table products with sku string, name string, price decimal")
+    _turn(state, manager, "insert into products sku=W1, name=Widget, price=1")
+
+    result = _turn(state, manager, "find widget in table products in database db_a")
+    databases = {row["database"] for row in result.data}
+    assert databases == {"db_a"}
+
+
+def test_find_no_matches_reports_clearly(state, manager):
+    _seed_products(state, manager, "mytest")
+    result = _turn(state, manager, "find nonexistentterm")
+    assert "no matches" in result.message.lower()
+
+
+def test_find_unknown_database_scope_reports_error(state, manager):
+    result = _turn(state, manager, "find widget in database nope")
+    assert "nope" in result.message.lower() or "not found" in result.message.lower()

@@ -47,9 +47,13 @@ def test_list_by_tier_requires_in_phrasing(chat: ChatEngine, service: ObjectServ
     assert len(reply.data) == 1
 
 
-def test_unrecognized_type_word_falls_through_to_help(chat: ChatEngine):
+def test_unrecognized_type_word_falls_through_to_merchants_pipeline(chat: ChatEngine):
+    # Not a real object-storage type word, so this falls all the way
+    # through to the merchants CRUD/analytics fallback (see chat.py's
+    # module docstring) - which resolves it as a by-name lookup that
+    # finds nothing, rather than a bare "I didn't understand".
     reply = chat.handle("s1", "list unicorns")
-    assert "didn't understand" in reply.message.lower()
+    assert "no merchant found" in reply.message.lower()
 
 
 def test_inspect(chat: ChatEngine, service: ObjectService):
@@ -152,6 +156,37 @@ def test_empty_message_returns_help(chat: ChatEngine):
     assert "try" in reply.message.lower()
 
 
-def test_unrecognized_command_returns_help(chat: ChatEngine):
+def test_unrecognized_command_falls_through_to_merchants_pipeline(chat: ChatEngine):
     reply = chat.handle("s1", "do a backflip")
-    assert "didn't understand" in reply.message.lower()
+    assert "no merchant found" in reply.message.lower()
+
+
+# -- merchants CRUD/analytics fallback (closes the gap chat.py's docstring names) --
+
+def test_merchants_crud_works_through_chat(chat: ChatEngine):
+    created = chat.handle("s1", "Create a merchant called ABC Store in India")
+    assert "Created" in created.message
+
+    shown = chat.handle("s1", "Show me ABC Store")
+    assert shown.data[0]["name"] == "ABC Store"
+    assert shown.data[0]["country"] == "IN"
+
+
+def test_merchants_analytics_query_asks_for_clarification_on_bare_balance(chat: ChatEngine):
+    # "balance" alone is ambiguous among ledger/available/settlement -
+    # this is the exact phrasing that used to hit the (no longer
+    # existent) "I didn't understand that" fallback; it should now reach
+    # the real clarification dialogue, symbol operator (">") included.
+    reply = chat.handle("s1", "list all merchants with balance > 6000")
+    assert "clarify" in reply.message.lower()
+    assert "ledger balance" in reply.message.lower()
+    assert "settlement balance" in reply.message.lower()
+
+
+def test_merchants_insert_via_db_admin_is_visible_to_merchants_crud(chat: ChatEngine):
+    # "insert into merchants ..." (database-admin path) and the merchants
+    # natural-language path must read/write the same underlying engine -
+    # see chat.py's module docstring.
+    chat.handle("s1", "insert into merchants name=Global Mart, country=US, settlement_balance=5000")
+    reply = chat.handle("s1", "Show me Global Mart")
+    assert reply.data[0]["name"] == "Global Mart"

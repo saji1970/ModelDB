@@ -191,6 +191,58 @@ def test_unknown_model_and_tensor_return_404(client: TestClient):
     assert client.get(f"/models/{model_id}/tensors/does.not.exist").status_code == 404
 
 
+def test_move_on_a_model_cascades_to_every_tensor_block(client: TestClient):
+    q = struct.pack("<4f", 1.0, 2.0, 3.0, 4.0)
+    k = struct.pack("<256f", *range(256))
+    content = _safetensors({"layer_0.q": ([4], q), "layer_0.k": ([64, 4], k)})
+
+    upload = client.post("/objects?filename=model.safetensors", content=content)
+    model_id = upload.json()["object_id"]
+
+    moved = client.post(f"/objects/{model_id}/move", json={"tier": "HOT"})
+    assert moved.status_code == 200
+    body = moved.json()
+    assert body["storage_tier"] == "HOT"
+    assert body["objects_moved"] >= 3  # manifest + at least one block per tensor
+
+    # The manifest's own metadata reflects the move too.
+    assert client.get(f"/objects/{model_id}").json()["storage_tier"] == "HOT"
+
+    # And the tensor content is still correct after moving.
+    tensor = client.get(f"/models/{model_id}/tensors/layer_0.q")
+    assert tensor.content == q
+
+
+def test_move_on_a_model_stuck_at_hot_after_a_restart_is_a_clean_404_not_a_500(tmp_path: Path):
+    # Reproduces the exact crash found by hand: a model at HOT whose
+    # in-memory backend was emptied (simulating a process restart -
+    # `MemoryStorageBackend` is deliberately not persisted) used to raise
+    # an unhandled KeyError instead of a clean, catchable error.
+    from mdc.storage.memory_store import MemoryStorageBackend
+    from mdc.storage_intelligence.strategy import StorageTier
+
+    store = DuckDBStore(tmp_path / "mdc.duckdb")
+    store.init_schema()
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    client = TestClient(create_app(manager))
+
+    q = struct.pack("<4f", 1.0, 2.0, 3.0, 4.0)
+    content = _safetensors({"layer_0.q": ([4], q)})
+    upload = client.post("/objects?filename=model.safetensors", content=content)
+    model_id = upload.json()["object_id"]
+    client.post(f"/objects/{model_id}/move", json={"tier": "HOT"})
+
+    router = manager.get("default").router
+    router.backends[StorageTier.HOT] = MemoryStorageBackend()  # simulate a restart
+
+    read = client.post(f"/objects/{model_id}/read")
+    assert read.status_code == 404
+    assert "restart" in read.json()["detail"].lower()
+
+    move_again = client.post(f"/objects/{model_id}/move", json={"tier": "WARM"})
+    assert move_again.status_code == 404  # not 500 - a clean, actionable error
+
+
 def test_non_safetensors_ai_model_extension_falls_back_to_generic_storage(client: TestClient):
     # Classified as AI_MODEL by extension (.pt), but not real safetensors
     # content - upload() must fall through to generic storage rather than error.

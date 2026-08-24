@@ -39,6 +39,7 @@ def test_never_matches_other_domains(phrase: str):
     "describe database", "list tables",
     "create table products with sku string, price decimal",
     "describe table products", "show data in products", "insert into products sku=A",
+    "find widget under 20000", "I want to find products widget under 20 K",
 ])
 def test_database_commands_never_match_the_object_storage_parser(phrase: str):
     assert parse_storage_command(phrase) is None
@@ -101,10 +102,108 @@ def test_describe_table_synonyms():
 # -- SHOW_DATA / INSERT --------------------------------------------------------------
 
 def test_show_data_synonyms():
-    for phrase in ("show data in products", "show rows in products", "query products"):
+    for phrase in ("show data in products", "show rows in products", "list data in products", "list rows in products", "query products"):
         cmd = parse_database_command(phrase)
         assert cmd.intent == DatabaseIntent.SHOW_DATA
         assert cmd.table_name == "products"
+        assert cmd.database_name is None
+
+
+def test_show_data_with_explicit_database_qualifier():
+    cmd = parse_database_command("show data in products in database TestDB")
+    assert cmd.intent == DatabaseIntent.SHOW_DATA
+    assert cmd.table_name == "products"
+    assert cmd.database_name == "TestDB"
+
+    cmd2 = parse_database_command("list data in products in database TestDB")
+    assert cmd2.table_name == "products"
+    assert cmd2.database_name == "TestDB"
+
+
+def test_describe_table_with_explicit_database_qualifier():
+    cmd = parse_database_command("describe table products in database TestDB")
+    assert cmd.intent == DatabaseIntent.DESCRIBE_TABLE
+    assert cmd.table_name == "products"
+    assert cmd.database_name == "TestDB"
+
+
+def test_show_merchants_in_india_is_never_captured_by_the_qualifier_pattern():
+    # The critical collision-safety check for the new "<table> in database
+    # <name>" qualifier: it requires the literal word "database" before
+    # the name, so free-form "<noun> in <place>" analytics phrasing (a
+    # merchants-CRUD staple) can never be swallowed here.
+    assert parse_database_command("Show merchants in India") is None
+    assert parse_database_command("show data in merchants in India") is None
+
+
+def test_show_data_tolerates_filler_words_and_reversed_database_qualifier():
+    cmd = parse_database_command("show data in the merchants table in default database")
+    assert cmd.intent == DatabaseIntent.SHOW_DATA
+    assert cmd.table_name == "merchants"
+    assert cmd.database_name == "default"
+
+    cmd2 = parse_database_command("show data in the products table")
+    assert cmd2.table_name == "products"
+    assert cmd2.database_name is None
+
+
+def test_describe_table_tolerates_name_first_phrasing_and_reversed_qualifier():
+    cmd = parse_database_command("describe the merchants table in default database")
+    assert cmd.intent == DatabaseIntent.DESCRIBE_TABLE
+    assert cmd.table_name == "merchants"
+    assert cmd.database_name == "default"
+
+    assert parse_database_command("describe products table").table_name == "products"
+    # Still requires the literal "table"/"collection" keyword somewhere -
+    # otherwise this is indistinguishable from a merchants-analytics
+    # "<noun> in <place>" phrase.
+    assert parse_database_command("describe merchants in India") is None
+
+
+# -- FIND (universal search across every database/table + documents) -----------------
+
+def test_find_extracts_term_and_under_constraint():
+    cmd = parse_database_command("I want to find products widget under 20 K")
+    assert cmd.intent == DatabaseIntent.FIND
+    assert cmd.search_term == "products widget"
+    assert cmd.max_value == 20_000
+    assert cmd.min_value is None
+    assert cmd.table_name is None
+    assert cmd.database_name is None
+
+
+def test_find_extracts_over_and_under_together():
+    cmd = parse_database_command("find widget over 5k under 20k")
+    assert cmd.search_term == "widget"
+    assert cmd.min_value == 5_000
+    assert cmd.max_value == 20_000
+
+
+def test_find_extracts_explicit_table_and_database_scope():
+    cmd = parse_database_command("find widget in table products in database TestDB")
+    assert cmd.search_term == "widget"
+    assert cmd.table_name == "products"
+    assert cmd.database_name == "TestDB"
+
+
+def test_find_amount_only_with_no_search_term():
+    cmd = parse_database_command("find under 20000")
+    assert cmd.intent == DatabaseIntent.FIND
+    assert cmd.search_term is None
+    assert cmd.max_value == 20_000
+
+
+def test_find_bare_verb_does_not_match():
+    assert parse_database_command("find") is None
+
+
+def test_find_supersedes_object_storage_find_text_phrasing():
+    # nlp.command's "find text <x>" is intentionally intercepted here
+    # first (see the module docstring) - it should still resolve to a
+    # sensible search term rather than silently disappearing.
+    cmd = parse_database_command("find text quarterly")
+    assert cmd.intent == DatabaseIntent.FIND
+    assert cmd.search_term == "quarterly"
 
 
 def test_insert_with_kv_pairs():

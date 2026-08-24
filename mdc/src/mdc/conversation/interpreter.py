@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Callable
 
 from mdc.api.service import ObjectService
+from mdc.classification.data_type import DataType
 from mdc.conversation.db_interpreter import handle_database_command
 from mdc.conversation.result import TurnResult
 from mdc.conversation.state import StorageConversationState
@@ -41,7 +42,7 @@ from mdc.nlp.intent import StorageIntent
 from mdc.nlp.preference import OptimizationPreference, extract_preference
 from mdc.storage_intelligence.analyzer import AccessProfile
 from mdc.storage_intelligence.policy import DEFAULT_POLICY
-from mdc.storage_intelligence.router import DataIntegrityError, ObjectNotFoundError
+from mdc.storage_intelligence.router import DataIntegrityError, ObjectNotFoundError, ObjectUnavailableError
 from mdc.storage_intelligence.strategy import StorageTier
 
 ReadFile = Callable[[Path], bytes]
@@ -208,10 +209,33 @@ def _handle_move(state, service, command: StorageCommand, read_file: ReadFile | 
         return TurnResult("Move which object? Give me an object id.")
     assert command.tier is not None
     try:
+        metadata = service.get_metadata(object_id)
+        state.last_object_id = object_id
+
+        if metadata["type"] == DataType.AI_MODEL.value:
+            # A model is really its manifest plus one index entry per
+            # tensor block, each with its own independently-decided tier
+            # - a plain `service.move()` here would only relocate the
+            # small manifest JSON and silently leave every tensor's
+            # actual weight bytes wherever they already were.
+            # `move_model` cascades to all of them so "move <model_id>
+            # to hot" does what it sounds like it does.
+            moved = service.model_store.move_model(object_id, command.tier)
+            tensor_blocks = moved - 1
+            return TurnResult(
+                f'Moved "{object_id}" and its {tensor_blocks} tensor block(s) to {command.tier.value}.',
+                data={"object_id": object_id, "storage_tier": command.tier.value, "objects_moved": moved},
+            )
+
         result = service.move(object_id, command.tier)
-    except ObjectNotFoundError:
+    except ObjectUnavailableError as exc:
+        return TurnResult(str(exc))
+    except (ObjectNotFoundError, ModelNotFoundError):
+        # `move_model` confirms the model exists via `get_manifest` first,
+        # which raises `ModelNotFoundError` (not `ObjectNotFoundError`) if
+        # its content can't be read back - e.g. indexed at HOT but that
+        # tier's in-memory backend lost it across a restart.
         return TurnResult(f'No object found with id "{object_id}".')
-    state.last_object_id = object_id
     return TurnResult(f'Moved "{object_id}" to {command.tier.value}.', data=result)
 
 

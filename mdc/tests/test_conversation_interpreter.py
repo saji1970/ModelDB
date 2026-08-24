@@ -225,6 +225,67 @@ def test_retrieve_tensor_from_unknown_model_reports_not_found(state, service, ma
     assert "no model found" in result.message.lower() or "no such collection" not in result.message.lower()
 
 
+def test_move_a_model_cascades_to_every_tensor_block(state, service, manager, tmp_path: Path):
+    import json
+    import struct
+
+    q = struct.pack("<4f", 1.0, 2.0, 3.0, 4.0)
+    k = struct.pack("<8f", *range(8))
+    header = {
+        "layer_0.q": {"dtype": "F32", "shape": [4], "data_offsets": [0, len(q)]},
+        "layer_0.k": {"dtype": "F32", "shape": [8], "data_offsets": [len(q), len(q) + len(k)]},
+    }
+    header_bytes = json.dumps(header).encode()
+    model_bytes = struct.pack("<Q", len(header_bytes)) + header_bytes + q + k
+    sample = tmp_path / "model.safetensors"
+    sample.write_bytes(model_bytes)
+
+    stored = process_turn(state, f"store {sample}", manager, read_file=Path.read_bytes)
+    model_id = stored.data["object_id"]
+
+    result = process_turn(state, f"move {model_id} to hot", manager)
+    assert "tensor block" in result.message.lower()
+    assert result.data["objects_moved"] >= 3  # manifest + at least one block per tensor
+    assert result.data["storage_tier"] == "HOT"
+
+    # A plain generic move would only relocate the manifest - confirm the
+    # tensors' own index entries actually moved too.
+    from mdc.storage_intelligence.strategy import StorageTier
+
+    for tensor_name in ("layer_0.q", "layer_0.k"):
+        entries = service.model_store.router.index.search(tensor_id=f"{model_id}:{tensor_name}")
+        assert all(entry.storage_tier is StorageTier.HOT for entry in entries)
+
+
+def test_move_a_model_stuck_at_hot_after_a_restart_reports_cleanly_not_a_crash(state, service, manager, tmp_path: Path):
+    # Reproduces the exact crash found by hand: a model at HOT whose
+    # in-memory backend was emptied (simulating a process restart -
+    # `MemoryStorageBackend` is deliberately not persisted). `move_model`
+    # confirms the model exists via `get_manifest` first, which raises
+    # `ModelNotFoundError` (not `ObjectNotFoundError`) once the bytes are
+    # gone - the chat handler must catch that too, not just the API.
+    import json
+    import struct
+
+    from mdc.storage.memory_store import MemoryStorageBackend
+
+    w = struct.pack("<2f", 1.0, 2.0)
+    header = {"w": {"dtype": "F32", "shape": [2], "data_offsets": [0, len(w)]}}
+    header_bytes = json.dumps(header).encode()
+    model_bytes = struct.pack("<Q", len(header_bytes)) + header_bytes + w
+    sample = tmp_path / "model.safetensors"
+    sample.write_bytes(model_bytes)
+
+    stored = process_turn(state, f"store {sample}", manager, read_file=Path.read_bytes)
+    model_id = stored.data["object_id"]
+    process_turn(state, f"move {model_id} to hot", manager)
+
+    service.model_store.router.backends[StorageTier.HOT] = MemoryStorageBackend()  # simulate a restart
+
+    result = process_turn(state, f"move {model_id} to warm", manager)
+    assert "no object found" in result.message.lower()
+
+
 def test_unknown_object_reports_not_found_for_every_intent(state, service, manager):
     for text in ["archive AIM-0000000000", "restore AIM-0000000000", "optimize AIM-0000000000",
                  "move AIM-0000000000 to hot", "delete AIM-0000000000", "inspect AIM-0000000000",
