@@ -1,0 +1,81 @@
+<svg viewBox="0 0 400 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Illustration of a DNA double helix with base pairs">
+  <defs>
+    <linearGradient id="strandA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3e6e8e"/>
+      <stop offset="100%" stop-color="#2c5878"/>
+    </linearGradient>
+    <linearGradient id="strandB" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d9614f"/>
+      <stop offset="100%" stop-color="#b23a2e"/>
+    </linearGradient>
+    <style>
+      .base-a { fill: #d9614f; }
+      .base-c { fill: #c98a2c; }
+      .base-g { fill: #6fa6c4; }
+      .base-t { fill: #8fc989; }
+      .rung { stroke: #52565c; stroke-width: 2; }
+      .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 13px; fill: #a3a7ad; }
+    </style>
+  </defs>
+
+  <rect width="400" height="600" fill="none"/>
+
+  <!-- Two sinusoidal backbones, 180 degrees out of phase -->
+  <path d="M 80,10 C 160,60 240,110 200,160 C 160,210 80,260 80,310 C 80,360 160,410 200,460 C 240,510 160,560 80,590"
+        fill="none" stroke="url(#strandA)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 320,10 C 240,60 160,110 200,160 C 240,210 320,260 320,310 C 320,360 240,410 200,460 C 160,510 240,560 320,590"
+        fill="none" stroke="url(#strandB)" stroke-width="10" stroke-linecap="round"/>
+
+  <!-- Base-pair rungs with alternating A/T, G/C labels - illustrative, not a real sequence -->
+  <g>
+    <line class="rung" x1="86" y1="35"  x2="314" y2="35"/>
+    <circle class="base-a" cx="86" cy="35" r="7"/><circle class="base-t" cx="314" cy="35" r="7"/>
+
+    <line class="rung" x1="115" y1="72" x2="285" y2="72"/>
+    <circle class="base-c" cx="115" cy="72" r="7"/><circle class="base-g" cx="285" cy="72" r="7"/>
+
+    <line class="rung" x1="155" y1="108" x2="245" y2="108"/>
+    <circle class="base-g" cx="155" cy="108" r="7"/><circle class="base-c" cx="245" cy="108" r="7"/>
+
+    <line class="rung" x1="196" y1="150" x2="204" y2="170"/>
+    <circle class="base-t" cx="200" cy="160" r="7"/>
+
+    <line class="rung" x1="155" y1="212" x2="245" y2="212"/>
+    <circle class="base-a" cx="155" cy="212" r="7"/><circle class="base-t" cx="245" cy="212" r="7"/>
+
+    <line class="rung" x1="115" y1="248" x2="285" y2="248"/>
+    <circle class="base-g" cx="115" cy="248" r="7"/><circle class="base-c" cx="285" cy="248" r="7"/>
+
+    <line class="rung" x1="83" y1="285" x2="317" y2="285"/>
+    <circle class="base-c" cx="83" cy="285" r="7"/><circle class="base-g" cx="317" cy="285" r="7"/>
+
+    <line class="rung" x1="86" y1="335" x2="314" y2="335"/>
+    <circle class="base-t" cx="86" cy="335" r="7"/><circle class="base-a" cx="314" cy="335" r="7"/>
+
+    <line class="rung" x1="115" y1="372" x2="285" y2="372"/>
+    <circle class="base-g" cx="115" cy="372" r="7"/><circle class="base-c" cx="285" cy="372" r="7"/>
+
+    <line class="rung" x1="155" y1="408" x2="245" y2="408"/>
+    <circle class="base-c" cx="155" cy="408" r="7"/><circle class="base-g" cx="245" cy="408" r="7"/>
+
+    <line class="rung" x1="196" y1="450" x2="204" y2="470"/>
+    <circle class="base-a" cx="200" cy="460" r="7"/>
+
+    <line class="rung" x1="155" y1="512" x2="245" y2="512"/>
+    <circle class="base-t" cx="155" cy="512" r="7"/><circle class="base-a" cx="245" cy="512" r="7"/>
+
+    <line class="rung" x1="115" y1="548" x2="285" y2="548"/>
+    <circle class="base-c" cx="115" cy="548" r="7"/><circle class="base-g" cx="285" cy="548" r="7"/>
+
+    <line class="rung" x1="86" y1="580" x2="314" y2="580"/>
+    <circle class="base-a" cx="86" cy="580" r="7"/><circle class="base-t" cx="314" cy="580" r="7"/>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(10,10)">
+    <circle class="base-a" cx="6" cy="0" r="5"/><text class="lbl" x="16" y="4">A</text>
+    <circle class="base-c" cx="46" cy="0" r="5"/><text class="lbl" x="56" y="4">C</text>
+    <circle class="base-g" cx="86" cy="0" r="5"/><text class="lbl" x="96" y="4">G</text>
+    <circle class="base-t" cx="126" cy="0" r="5"/><text class="lbl" x="136" y="4">T</text>
+  </g>
+</svg>
