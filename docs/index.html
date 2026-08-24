@@ -203,13 +203,18 @@
   .frow .tag { font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--amber); }
 
   /* platform table */
-  .platform-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
-  .platform-table th { text-align: left; font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 500; padding: 0 0 12px; border-bottom: 1px solid var(--border); }
-  .platform-table td { padding: 16px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
-  .platform-table tr:last-child td { border-bottom: none; }
+  .platform-table, .compare-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .platform-table th, .compare-table th { text-align: left; font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 500; padding: 0 0 12px; border-bottom: 1px solid var(--border); }
+  .platform-table td, .compare-table td { padding: 16px 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .platform-table tr:last-child td, .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table { table-layout: fixed; }
+  .compare-table th:first-child, .compare-table td:first-child { width: 26%; }
+  .compare-table th:not(:first-child), .compare-table td:not(:first-child) { padding-left: 20px; }
   .plat-name { font-weight: 600; }
   .plat-name .sub { display: block; font-weight: 400; color: var(--text-dim); font-size: 13px; margin-top: 2px; }
   .size-cell { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+  .callout { background: var(--chip-partial-bg); color: var(--chip-partial-text); border: 1px solid var(--border); border-radius: 6px; padding: 16px 18px; font-size: 14.5px; margin-bottom: 24px; }
+  .callout strong { display: block; margin-bottom: 4px; font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
   .chip { display: inline-flex; align-items: center; gap: 6px; font-family: "JetBrains Mono", monospace; font-size: 11.5px; padding: 4px 9px; border-radius: 3px; white-space: nowrap; }
   .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
   .chip.verified { background: var(--chip-verified-bg); color: var(--chip-verified-text); }
@@ -242,10 +247,6 @@
   .security-cell p { color: var(--text-dim); margin: 0; font-size: 14.5px; }
   .security-cell .k { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--amber); display: block; margin-bottom: 8px; }
 
-  /* DNA teaser */
-  .dna-teaser { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 28px; align-items: start; padding: 24px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px; }
-  .dna-teaser img { width: 100%; height: auto; }
-
   /* footer */
   footer { padding: 48px 0 60px; }
   .footer-grid { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 24px; }
@@ -258,8 +259,11 @@
     #topbar nav { display: none; }
     .frow { grid-template-columns: 1fr; gap: 6px; }
     .security-grid { grid-template-columns: 1fr; }
-    .dna-teaser { grid-template-columns: minmax(0, 1fr); }
-    .dna-teaser img { max-width: 100px; margin: 0 auto; }
+    .compare-table, .compare-table thead, .compare-table tbody, .compare-table tr, .compare-table th, .compare-table td { display: block; width: auto; padding-left: 0; }
+    .compare-table thead { display: none; }
+    .compare-table tr { padding: 14px 0; border-bottom: 1px solid var(--border); }
+    .compare-table td { border-bottom: none; padding: 2px 0; }
+    .compare-table td:not(:first-child)::before { content: attr(data-label); display: block; font-family: "JetBrains Mono", monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-top: 8px; }
     .platform-table { font-size: 13px; }
     .platform-table th:nth-child(3), .platform-table td:nth-child(3) { display: none; }
   }
@@ -270,6 +274,7 @@
 <div id="topbar">
   <div class="brand">mdc<span class="dot">·</span>lite</div>
   <nav>
+    <a href="#products">Products</a>
     <a href="#features">Features</a>
     <a href="#platforms">Platforms</a>
     <a href="#quickstart">Quickstart</a>
@@ -310,10 +315,36 @@
     </div>
   </section>
 
+  <section id="products">
+    <div class="section-head">
+      <h2>Two products, one project</h2>
+      <span class="num">01 — WHICH ONE</span>
+    </div>
+    <p style="color:var(--text-dim); max-width:64ch; margin-bottom:24px;">This page is about <b class="mono" style="color:var(--text);">mdc-lite</b>. It has a sibling, the <a href="platform.html">MDC Platform</a> — a separate, Python server-side product in the same repo. They solve different problems and don't share code.</p>
+    <table class="compare-table" style="margin-bottom:20px;">
+      <thead>
+        <tr><th></th><th>mdc-lite <span style="color:var(--accent); font-weight:400;">— this page</span></th><th>MDC Platform</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="plat-name">What it is</td><td class="size-cell" data-label="mdc-lite">An embeddable library, linked into your app's binary</td><td class="size-cell" data-label="MDC Platform">A server you run and talk to</td></tr>
+        <tr><td class="plat-name">Where it runs</td><td class="size-cell" data-label="mdc-lite">Inside the app itself — no network, no server</td><td class="size-cell" data-label="MDC Platform">On a machine with Python, reachable over the network</td></tr>
+        <tr><td class="plat-name">What it stores</td><td class="size-cell" data-label="mdc-lite">Raw key-value pairs — nothing else</td><td class="size-cell" data-label="MDC Platform">AI models, images, documents, database tables</td></tr>
+        <tr><td class="plat-name">How you talk to it</td><td class="size-cell" data-label="mdc-lite">5 functions: put / get / exists / delete / list_keys</td><td class="size-cell" data-label="MDC Platform">Plain sentences — no SQL, nothing to train support staff on</td></tr>
+        <tr><td class="plat-name">Encryption</td><td class="size-cell" data-label="mdc-lite">Mandatory — every value and every key name</td><td class="size-cell" data-label="MDC Platform">None yet (an open, documented gap)</td></tr>
+        <tr><td class="plat-name">DNA-inspired encoding</td><td class="size-cell" data-label="mdc-lite">No</td><td class="size-cell" data-label="MDC Platform">Yes — an archival storage tier</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><strong>Is either one's data actually stored as a DNA molecule?</strong>No. Neither product does. mdc-lite's data is ordinary encrypted files. MDC Platform's "DNA" tier encodes bytes into a string of A/C/G/T characters in a database — a software simulation, not a physical molecule. No synthesis, no sequencing, no wet lab, anywhere in either codebase.</div>
+    <div class="cta-row" style="margin-bottom:0;">
+      <a class="btn btn-ghost" href="platform.html">Explore MDC Platform →</a>
+      <a class="btn btn-ghost" href="#features">Continue reading about mdc-lite ↓</a>
+    </div>
+  </section>
+
   <section id="features">
     <div class="section-head">
       <h2>What it actually does</h2>
-      <span class="num">01 — FEATURES</span>
+      <span class="num">02 — FEATURES</span>
     </div>
     <div class="feature-rows">
       <div class="frow">
@@ -342,7 +373,7 @@
   <section id="platforms">
     <div class="section-head">
       <h2>Get a build</h2>
-      <span class="num">02 — PLATFORMS</span>
+      <span class="num">03 — PLATFORMS</span>
     </div>
     <table class="platform-table">
       <thead>
@@ -423,7 +454,7 @@
   <section id="quickstart">
     <div class="section-head">
       <h2>Five functions. That's the whole API.</h2>
-      <span class="num">03 — QUICKSTART</span>
+      <span class="num">04 — QUICKSTART</span>
     </div>
     <div class="code-tabs">
       <button class="active" data-lang="rust">Rust</button>
@@ -471,7 +502,7 @@ mdc_lite_close(store)</pre></div>
   <section id="security">
     <div class="section-head">
       <h2>On "quantum encryption"</h2>
-      <span class="num">04 — SECURITY</span>
+      <span class="num">05 — SECURITY</span>
     </div>
     <div class="security-grid">
       <div class="security-cell">
@@ -487,27 +518,6 @@ mdc_lite_close(store)</pre></div>
     </div>
   </section>
 
-  <section id="dna">
-    <div class="section-head">
-      <h2>From the same project: DNA-inspired archival storage</h2>
-      <span class="num">05 — MDC PLATFORM</span>
-    </div>
-    <p style="color:var(--text-dim); max-width:62ch; margin-bottom:24px;">mdc-lite itself doesn't do this — it's a local encrypted key-value store, nothing more. But its sibling project, the <a href="platform.html">MDC Platform</a> (a separate, Python server-side product in this same repo), has a real archival storage tier that goes one step further than encryption: it actually encodes bytes into simulated DNA base sequences.</p>
-    <div class="dna-teaser">
-      <img src="dna-helix.svg" alt="DNA double helix illustration with labeled A/C/G/T base pairs" width="120" height="180">
-      <div>
-        <div class="diagram-label">// the core concept - 2 bits per base</div>
-        <div class="bytes" style="height:44px; margin-bottom:14px;">
-          <div class="seg nonce" style="flex:1;">A</div>
-          <div class="seg cipher" style="flex:1; background:var(--tag-nonce);">C</div>
-          <div class="seg cipher" style="flex:1;">G</div>
-          <div class="seg tag" style="flex:1;">T</div>
-        </div>
-        <p style="color:var(--text-dim); margin:0 0 16px;">A real, working prototype encoder — plus error correction and a corruption simulator — not physical DNA synthesis. Reserved for explicitly-archived, rarely-read data, never inferred from low access alone.</p>
-        <a class="btn btn-ghost" href="platform.html#tiers">See the full concept + whitepaper →</a>
-      </div>
-    </div>
-  </section>
 
   <footer>
     <div class="footer-grid">
