@@ -148,6 +148,14 @@
   .callout { background: var(--callout-bg); color: var(--callout-text); border: 1px solid var(--callout-border); border-radius: 6px; padding: 16px 18px; font-size: 14.5px; margin-bottom: 16px; }
   .callout strong { display: block; margin-bottom: 4px; font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
 
+  .dna-panel { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 24px; padding: 20px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px; }
+  .dna-panel img { width: 100%; height: auto; }
+  .dna-panel p { font-size: 14.5px; }
+  @media (max-width: 560px) {
+    .dna-panel { grid-template-columns: minmax(0, 1fr); }
+    .dna-panel img { max-width: 120px; margin: 0 auto; }
+  }
+
   .tier-chip { display: inline-flex; align-items: center; gap: 6px; font-family: "JetBrains Mono", monospace; font-size: 11.5px; padding: 3px 9px; border-radius: 3px; white-space: nowrap; font-weight: 500; }
   .tier-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
   .tier-hot { background: var(--chip-hot-bg); color: var(--chip-hot-text); } .tier-hot::before { background: var(--chip-hot-text); }
@@ -305,6 +313,17 @@ curl http://127.0.0.1:8000/models/AIM-58F0BB747C/tensors/linear.weight
         <tr><td><span class="tier-chip tier-cold">COLD</span></td><td>Immutable, zero access, zero mutation</td><td>DuckDB (durable)</td></tr>
         <tr><td><span class="tier-chip tier-archive">ARCHIVE</span></td><td>Explicitly requested (never inferred from low access alone)</td><td>Simulated DNA-base encoding</td></tr>
       </table>
+
+      <div class="dna-panel">
+        <img src="dna-helix.svg" alt="DNA double helix illustration with labeled A/C/G/T base pairs" width="160" height="240">
+        <div>
+          <h3 style="margin-top:0">The core concept: 2 bits per base</h3>
+          <p>Every byte in the ARCHIVE tier is mapped directly to 4 DNA bases - the same information-density idea real DNA-storage research is built on:</p>
+          <pre class="code-block" style="margin-bottom:12px"><code>00 → A      01 → C      10 → G      11 → T</code></pre>
+          <p>A real, working error-correction scheme (N-way repetition with majority voting across independently-corrupted copies) and a seeded corruption simulator sit on top of the encoding - modeling substitution, insertion, deletion, and dropout errors the way real DNA storage research does. This is a <strong>simulation</strong>: a string of ACGT characters in a database, not a molecule - no physical synthesis or sequencing anywhere in this codebase.</p>
+          <p><a href="https://github.com/saji1970/ModelDB/blob/main/DNA-STORAGE-WHITEPAPER.md">Read the full whitepaper →</a> for the error-correction design, the corruption model, and an honest, specific answer to "does this use quantum encryption?" (short version: no - and here's what quantum computing actually does and doesn't threaten about long-retention archival data).</p>
+        </div>
+      </div>
     </section>
 
     <section id="multi-db">

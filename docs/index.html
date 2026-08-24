@@ -242,6 +242,10 @@
   .security-cell p { color: var(--text-dim); margin: 0; font-size: 14.5px; }
   .security-cell .k { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--amber); display: block; margin-bottom: 8px; }
 
+  /* DNA teaser */
+  .dna-teaser { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 28px; align-items: start; padding: 24px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px; }
+  .dna-teaser img { width: 100%; height: auto; }
+
   /* footer */
   footer { padding: 48px 0 60px; }
   .footer-grid { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 24px; }
@@ -254,6 +258,8 @@
     #topbar nav { display: none; }
     .frow { grid-template-columns: 1fr; gap: 6px; }
     .security-grid { grid-template-columns: 1fr; }
+    .dna-teaser { grid-template-columns: minmax(0, 1fr); }
+    .dna-teaser img { max-width: 100px; margin: 0 auto; }
     .platform-table { font-size: 13px; }
     .platform-table th:nth-child(3), .platform-table td:nth-child(3) { display: none; }
   }
@@ -477,6 +483,28 @@ mdc_lite_close(store)</pre></div>
         <span class="k">WHAT IT IS</span>
         <h3>256-bit symmetric, already enough</h3>
         <p>Grover's algorithm only halves a symmetric key's effective strength — 256 bits stays enormous. Quantum computers threaten asymmetric crypto (RSA/ECC) instead, which this library doesn't use at all.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="dna">
+    <div class="section-head">
+      <h2>From the same project: DNA-inspired archival storage</h2>
+      <span class="num">05 — MDC PLATFORM</span>
+    </div>
+    <p style="color:var(--text-dim); max-width:62ch; margin-bottom:24px;">mdc-lite itself doesn't do this — it's a local encrypted key-value store, nothing more. But its sibling project, the <a href="platform.html">MDC Platform</a> (a separate, Python server-side product in this same repo), has a real archival storage tier that goes one step further than encryption: it actually encodes bytes into simulated DNA base sequences.</p>
+    <div class="dna-teaser">
+      <img src="dna-helix.svg" alt="DNA double helix illustration with labeled A/C/G/T base pairs" width="120" height="180">
+      <div>
+        <div class="diagram-label">// the core concept - 2 bits per base</div>
+        <div class="bytes" style="height:44px; margin-bottom:14px;">
+          <div class="seg nonce" style="flex:1;">A</div>
+          <div class="seg cipher" style="flex:1; background:var(--tag-nonce);">C</div>
+          <div class="seg cipher" style="flex:1;">G</div>
+          <div class="seg tag" style="flex:1;">T</div>
+        </div>
+        <p style="color:var(--text-dim); margin:0 0 16px;">A real, working prototype encoder — plus error correction and a corruption simulator — not physical DNA synthesis. Reserved for explicitly-archived, rarely-read data, never inferred from low access alone.</p>
+        <a class="btn btn-ghost" href="platform.html#tiers">See the full concept + whitepaper →</a>
       </div>
     </div>
   </section>
