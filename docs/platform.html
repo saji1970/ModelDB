@@ -107,6 +107,10 @@
   table :is(th, td) { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
   table th { font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 500; }
   table code { font-size: 12.5px; }
+  .compare-table td:nth-child(2) code { color: var(--text-dim); background: none; border: none; padding: 0; white-space: normal; word-break: break-word; }
+  .compare-table td:nth-child(3) { border-left: 2px solid var(--accent); padding-left: 14px; }
+  .compare-table td:nth-child(3) code { color: var(--text); background: none; border: none; padding: 0; font-weight: 500; }
+  .compare-table th:nth-child(3) { color: var(--accent); }
 
   .callout { background: var(--callout-bg); color: var(--callout-text); border: 1px solid var(--callout-border); border-radius: 6px; padding: 16px 18px; font-size: 14.5px; margin-bottom: 16px; }
   .callout strong { display: block; margin-bottom: 4px; font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -144,6 +148,7 @@
       <div class="grp-label">Get started</div>
       <a href="#installation">Installation</a>
       <a href="#concepts">Core concepts</a>
+      <a href="#no-sql">No SQL required</a>
     </div>
     <div class="grp">
       <div class="grp-label">Storing objects</div>
@@ -166,7 +171,7 @@
 
   <main>
     <h1>MDC Platform</h1>
-    <p class="lede">The conversational data engine underneath mdc-lite's sibling product — a server that stores AI models, images, documents, and ordinary database tables side by side, all reachable through the same natural-language layer.</p>
+    <p class="lede">A server that stores AI models, images, documents, and ordinary database tables side by side — queried entirely in plain sentences. No <code>SELECT</code>, no <code>JOIN</code>, nothing your support team needs to be trained on before they can get an answer out of it.</p>
 
     <section id="installation">
       <h2>Installation</h2>
@@ -193,6 +198,30 @@ pip install -r requirements.txt</code></pre>
         <li><strong>The database layer</strong> - unlimited named databases, each with its own schema-validated tables, created and queried entirely through chat or the CLI. This is what <a href="#multi-db">§ The database layer</a> covers.</li>
       </ul>
       <p>Both are driven by the same principle: an LLM proposes an interpretation, but a deterministic validator - never the LLM itself - decides what operation actually reaches storage. No natural-language command generates raw SQL.</p>
+    </section>
+
+    <section id="no-sql">
+      <h2>Nobody on your team has to learn SQL</h2>
+      <p>Every example on this page - filtering by a threshold, scoping to a specific database, searching across tables - is plain sentences, not query syntax. That's not a simplified subset for beginners standing next to "the real interface"; it <em>is</em> the interface. Support staff, analysts, and anyone else who needs an answer from the data can just ask for it, with no <code>SELECT</code>/<code>WHERE</code>/<code>JOIN</code> training required, and nothing to get subtly wrong the way a hand-written query can.</p>
+      <table class="compare-table">
+        <tr><th>What you want</th><th>Traditional SQL</th><th>MDC</th></tr>
+        <tr>
+          <td>Find a cheap item by name</td>
+          <td><code>SELECT * FROM products WHERE name LIKE '%widget%' AND price &lt; 20000;</code></td>
+          <td><code>find widget under 20000</code></td>
+        </tr>
+        <tr>
+          <td>Filter by a threshold</td>
+          <td><code>SELECT * FROM merchants WHERE settlement_balance &gt; 6000;</code></td>
+          <td><code>list merchants with balance &gt; 6000</code></td>
+        </tr>
+        <tr>
+          <td>Read another database without switching</td>
+          <td><code>SELECT * FROM inventory.products;</code></td>
+          <td><code>show data in products in database inventory</code></td>
+        </tr>
+      </table>
+      <div class="callout"><strong>Why this is safe, not just easier</strong>The natural-language layer never writes SQL itself - an LLM proposes what you might mean, but a deterministic validator decides the actual operation before anything touches storage. "Balance" resolving against three different fields (ledger/available/settlement) triggers a clarifying question instead of a guess; a destructive delete always asks for confirmation first. The easier interface and the safer one are the same interface, on purpose.</div>
     </section>
 
     <section id="models">
