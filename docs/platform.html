@@ -166,6 +166,7 @@
       <div class="grp-label">Reference</div>
       <a href="#rest-api">REST API</a>
       <a href="#chat-commands">Chat commands</a>
+      <a href="#integrations">Integrations (RASA, custom UI)</a>
     </div>
   </aside>
 
@@ -317,6 +318,9 @@ describe table products in database inventory</code></pre>
         <tr><td><code>GET /models/{id}/tensors/{name}</code></td><td>One tensor's raw bytes, without touching the rest of the model</td></tr>
         <tr><td><code>GET /databases</code> / <code>POST /databases</code></td><td>List or create a named database</td></tr>
         <tr><td><code>GET /databases/{name}/tables/{table}/rows</code></td><td>A table's rows, from the browser UI or any HTTP client</td></tr>
+        <tr><td><code>POST /databases/{name}/tables/{table}</code></td><td>Create a table from structured field data - no sentence to construct</td></tr>
+        <tr><td><code>POST /databases/{name}/tables/{table}/rows</code></td><td>Insert a row from structured field data</td></tr>
+        <tr><td><code>GET /find</code></td><td>Structured universal search - <code>?q=&amp;min=&amp;max=&amp;database=&amp;table=</code></td></tr>
         <tr><td><code>POST /chat</code></td><td>The same conversational layer the CLI and browser chat panel use</td></tr>
       </table>
     </section>
@@ -331,6 +335,54 @@ describe table products in database inventory</code></pre>
         <tr><td><code>Show all merchants</code>, <code>Create a merchant called ...</code></td><td>Merchants CRUD/analytics (a separate, earlier conversational domain - see the platform README for why)</td></tr>
       </table>
       <div class="callout"><strong>Full reference</strong>The complete README, including the acceptance-test walkthroughs this documentation draws from, lives at <a href="https://github.com/saji1970/ModelDB/blob/main/mdc/README.md">mdc/README.md</a>; the architecture write-up (including the honest scoping note on why merchants-CRUD and the object store stay separate systems) is at <a href="https://github.com/saji1970/ModelDB/blob/main/mdc/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>.</div>
+    </section>
+
+    <section id="integrations">
+      <h2>Connect your own NLU or UI</h2>
+      <p>MDC's own chat layer doesn't have to be the only front door. Two integration patterns, depending on whether your system has already done its own language understanding by the time it talks to MDC:</p>
+
+      <h3>Pattern 1 — pass-through (simplest, works today, zero new code)</h3>
+      <p>Forward raw user text to <code>POST /chat</code> and let MDC's own deterministic parser do the work - the same pipeline the browser chat panel and CLI already use. This is the right choice for most integrations: your system doesn't need to understand databases, models, or storage tiers at all, just detect "this is a data question" and relay the text.</p>
+      <pre class="code-block"><code># A RASA custom action (actions.py) - the entire integration
+import requests
+from rasa_sdk import Action
+
+class ActionQueryMDC(Action):
+    def name(self):
+        return "action_query_mdc"
+
+    def run(self, dispatcher, tracker, domain):
+        reply = requests.post(
+            "http://localhost:8000/chat",
+            json={"message": tracker.latest_message.get("text"), "session_id": tracker.sender_id},
+        ).json()
+        dispatcher.utter_message(text=reply["message"])
+        return []</code></pre>
+      <p>Note <code>session_id: tracker.sender_id</code> - reusing RASA's own conversation id keeps MDC's per-session state (which database you switched to, pronoun resolution) aligned with RASA's own multi-turn state, so "switch to database inventory" followed later by "show data in products" behaves correctly across turns.</p>
+
+      <h3>Pattern 2 — structured (for a system that already extracted intent)</h3>
+      <p>If your NLU has already parsed "add Widget at $9.99 to inventory" into its own slots, reconstructing MDC's sentence syntax from those slots is unnecessary indirection. Call the structured REST endpoints directly with the extracted values instead:</p>
+      <pre class="code-block"><code># RASA custom action calling the structured endpoint directly,
+# using slots RASA's own NLU already extracted
+requests.post(
+    f"http://localhost:8000/databases/inventory/tables/products/rows",
+    json={"values": {"name": tracker.get_slot("item_name"), "price": tracker.get_slot("price")}},
+)</code></pre>
+      <p>Every structured endpoint runs through the exact same validation as the chat/CLI path it mirrors (schema-registry-only table creation, typed field coercion on insert) - there's no separate, less-checked code path for programmatic callers.</p>
+
+      <h3>A custom "ChatGPT-style" UI</h3>
+      <p>A minimal chat interface is one <code>fetch()</code> call - the same <code>POST /chat</code> endpoint the Storage Explorer's own chat panel uses:</p>
+      <pre class="code-block"><code>async function ask(message) {
+  const res = await fetch("http://localhost:8000/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, session_id: crypto.randomUUID() }),
+  });
+  const { message: reply, data } = await res.json();
+  return { reply, data };  // data is a table's rows / a search result list, when there is one
+}</code></pre>
+
+      <div class="callout"><strong>Before you deploy this reachable from anywhere but localhost</strong>CORS is deliberately wide open (<code>allow_origins=["*"]</code>) so a third-party integration can call this API from a different origin without a browser rejecting the response first - that's the point of everything on this page. But there is still no authentication anywhere in MDC. Open CORS plus no auth means anyone who can reach the port can call it. Fine for local development and internal, network-isolated use; put a reverse proxy with real auth in front of it before exposing it any more broadly than that.</div>
     </section>
   </main>
 </div>

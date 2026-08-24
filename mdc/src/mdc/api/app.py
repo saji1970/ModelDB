@@ -8,6 +8,15 @@ metadata; the bytes themselves are always inspected first (section 6).
 
 Every route is a thin translation of `ObjectService` - no decision
 logic lives here, only HTTP verbs/status codes/error mapping.
+
+CORS is wide open (`allow_origins=["*"]`) so a third-party NLU
+integration (a RASA custom action, a hand-rolled chat UI, anything
+else) can call this API from a different origin without a browser
+CORS rejection getting in the way first - see the module docstring on
+`/nlp/*` for why this is genuinely the point of this API surface, not
+an oversight. There is still no authentication anywhere in this
+project (a separate, pre-existing gap) - open CORS plus no auth means
+this must not be deployed reachable from the open internet as-is.
 """
 
 from __future__ import annotations
@@ -16,16 +25,20 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from mdc.api.chat import ChatEngine
 from mdc.classification.data_type import DataType
+from mdc.conversation.db_interpreter import handle_database_command
+from mdc.conversation.state import StorageConversationState
 from mdc.databases.errors import DatabaseAlreadyExistsError, DatabaseNotFoundError, InvalidDatabaseNameError
 from mdc.databases.manager import DatabaseManager, DEFAULT_DATABASE
-from mdc.model.operation import ReadOperation
+from mdc.model.operation import CreateOperation, ReadOperation
 from mdc.models.errors import ModelNotFoundError, TensorNotFoundError
-from mdc.schema.registry import CollectionNotFoundError
+from mdc.nlp.db_command import VALID_FIELD_TYPES, DatabaseCommand, DatabaseIntent
+from mdc.schema.registry import CollectionNotFoundError, FieldSchema, SchemaError
 from mdc.storage_intelligence.analyzer import AccessProfile
 from mdc.storage_intelligence.router import DataIntegrityError, ObjectNotFoundError
 from mdc.storage_intelligence.strategy import StorageTier
@@ -44,6 +57,15 @@ class ChatRequest(BaseModel):
 
 class CreateDatabaseRequest(BaseModel):
     name: str
+
+
+class CreateTableRequest(BaseModel):
+    # field name -> type word ("string" | "decimal" | "integer" | "boolean" | "datetime")
+    fields: dict[str, str]
+
+
+class InsertRowRequest(BaseModel):
+    values: dict[str, str]
 
 
 class OptimizeRequest(BaseModel):
@@ -66,6 +88,12 @@ def create_app(manager: DatabaseManager) -> FastAPI:
     service = manager.get(DEFAULT_DATABASE).object_service
     chat_engine = ChatEngine(manager)
     app = FastAPI(title="MDC Universal Object API")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     def _not_found(exc: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(exc))
@@ -99,6 +127,65 @@ def create_app(manager: DatabaseManager) -> FastAPI:
                 {"name": t, "fields": len(handle.schema_registry.get_collection(t).fields)} for t in tables
             ],
         }
+
+    @app.post("/databases/{name}/tables/{table}", status_code=201)
+    def create_table(name: str, table: str, body: CreateTableRequest) -> dict[str, Any]:
+        """Structured table creation - the REST counterpart to chat's
+        "create table X with sku string, price decimal", for a caller
+        (an external NLU's action handler, a custom UI) that already has
+        typed field data and would rather not reconstruct that sentence
+        syntax. Still schema-registry-only, same as chat - never raw SQL
+        DDL, regardless of which door a request came through."""
+        try:
+            handle = manager.get(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+        if handle.schema_registry.has_collection(table):
+            raise HTTPException(status_code=409, detail=f'Table "{table}" already exists in "{name}".')
+        for field_name, type_word in body.fields.items():
+            if type_word not in VALID_FIELD_TYPES:
+                raise HTTPException(status_code=422, detail=f"Field {field_name!r} has unknown type {type_word!r}. Valid types: {sorted(VALID_FIELD_TYPES)}")
+        fields = {n: FieldSchema(name=n, datatype=t, required=False) for n, t in body.fields.items()}
+        handle.schema_registry.create_collection(table, fields)
+        manager.persist_schema(name)
+        return {"database": name, "table": table, "fields": list(body.fields)}
+
+    @app.post("/databases/{name}/tables/{table}/rows", status_code=201)
+    def insert_row(name: str, table: str, body: InsertRowRequest) -> dict[str, Any]:
+        """Structured row insertion - the REST counterpart to chat's
+        "insert into X sku=ABC123, price=9.99"."""
+        try:
+            handle = manager.get(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+        try:
+            result = handle.engine.create(CreateOperation(collection=table, data=body.values))
+        except CollectionNotFoundError as exc:
+            raise _not_found(exc) from exc
+        except SchemaError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record = result.records[0]
+        return {"database": name, "table": table, "record_id": record.record_id, **record.fields}
+
+    @app.get("/find")
+    def find(
+        q: str | None = None,
+        min: float | None = None,
+        max: float | None = None,
+        database: str | None = None,
+        table: str | None = None,
+    ) -> dict[str, Any]:
+        """The structured REST form of chat's universal `find` - searches
+        every database's tables and documents at once (or a scoped
+        subset, if `database`/`table` are given), with the exact same
+        clause semantics `find <text> under/over <amount>` has in chat.
+        Reuses that same handler rather than a second implementation -
+        see `conversation.db_interpreter._handle_find`."""
+        command = DatabaseCommand(
+            DatabaseIntent.FIND, database_name=database, table_name=table, search_term=q, min_value=min, max_value=max
+        )
+        result = handle_database_command(StorageConversationState(), manager, command)
+        return {"message": result.message, "results": result.data or []}
 
     @app.get("/databases/{name}/tables/{table}")
     def get_database_table(name: str, table: str) -> dict[str, Any]:

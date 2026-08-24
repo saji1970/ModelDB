@@ -346,6 +346,106 @@ def test_table_endpoints_unknown_table_404(client: TestClient):
     assert client.get("/databases/mytest/tables/nope/rows").status_code == 404
 
 
+# -- structured REST endpoints for external NLU/integration callers -------------
+# (a caller that already extracted structured intent - a RASA custom action,
+# a hand-rolled UI - shouldn't have to reconstruct chat's sentence syntax)
+
+def test_create_table_via_rest(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    response = client.post(
+        "/databases/mytest/tables/products", json={"fields": {"sku": "string", "price": "decimal"}}
+    )
+    assert response.status_code == 201
+    assert response.json() == {"database": "mytest", "table": "products", "fields": ["sku", "price"]}
+
+    fields = client.get("/databases/mytest/tables/products").json()["fields"]
+    assert {f["name"] for f in fields} == {"sku", "price"}
+
+
+def test_create_table_via_rest_rejects_unknown_field_type(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    response = client.post("/databases/mytest/tables/products", json={"fields": {"sku": "not-a-real-type"}})
+    assert response.status_code == 422
+
+
+def test_create_table_via_rest_duplicate_is_409(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    client.post("/databases/mytest/tables/products", json={"fields": {"sku": "string"}})
+    response = client.post("/databases/mytest/tables/products", json={"fields": {"sku": "string"}})
+    assert response.status_code == 409
+
+
+def test_create_table_via_rest_unknown_database_404(client: TestClient):
+    response = client.post("/databases/nope/tables/products", json={"fields": {"sku": "string"}})
+    assert response.status_code == 404
+
+
+def test_insert_row_via_rest(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    client.post("/databases/mytest/tables/products", json={"fields": {"sku": "string", "price": "decimal"}})
+
+    response = client.post(
+        "/databases/mytest/tables/products/rows", json={"values": {"sku": "ABC123", "price": "9.99"}}
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["sku"] == "ABC123"
+    assert "record_id" in body
+
+    rows = client.get("/databases/mytest/tables/products/rows").json()["rows"]
+    assert rows[0]["sku"] == "ABC123"
+
+
+def test_insert_row_via_rest_unknown_table_404(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    response = client.post("/databases/mytest/tables/nope/rows", json={"values": {"a": "b"}})
+    assert response.status_code == 404
+
+
+def test_find_endpoint_matches_a_price_constrained_term_across_databases(client: TestClient):
+    client.post("/databases", json={"name": "mytest"})
+    client.post("/databases/mytest/tables/products", json={"fields": {"name": "string", "price": "decimal"}})
+    client.post("/databases/mytest/tables/products/rows", json={"values": {"name": "Widget", "price": "9.99"}})
+    client.post("/databases/mytest/tables/products/rows", json={"values": {"name": "Gadget", "price": "25000"}})
+
+    response = client.get("/find", params={"q": "widget", "max": 20000})
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["results"]) == 1
+    assert body["results"][0]["name"] == "Widget"
+
+
+def test_find_endpoint_scoped_to_one_database_and_table(client: TestClient):
+    client.post("/databases", json={"name": "db_a"})
+    client.post("/databases/db_a/tables/products", json={"fields": {"name": "string"}})
+    client.post("/databases/db_a/tables/products/rows", json={"values": {"name": "Widget"}})
+    client.post("/databases", json={"name": "db_b"})
+    client.post("/databases/db_b/tables/products", json={"fields": {"name": "string"}})
+    client.post("/databases/db_b/tables/products/rows", json={"values": {"name": "Widget"}})
+
+    response = client.get("/find", params={"q": "widget", "database": "db_a"})
+    results = response.json()["results"]
+    assert all(r["database"] == "db_a" for r in results)
+
+
+def test_find_endpoint_no_matches_is_still_200(client: TestClient):
+    response = client.get("/find", params={"q": "nonexistent-term-xyz"})
+    assert response.status_code == 200
+    assert response.json()["results"] == []
+
+
+def test_cors_allows_a_cross_origin_request(client: TestClient):
+    # A third-party NLU/custom UI calling from a different origin (a
+    # RASA action server, a chat UI hosted elsewhere) needs this header
+    # present, or the browser rejects the response before it ever
+    # reaches the caller's own code.
+    response = client.options(
+        "/chat",
+        headers={"Origin": "https://example.com", "Access-Control-Request-Method": "POST"},
+    )
+    assert response.headers.get("access-control-allow-origin") == "*"
+
+
 # -- the exact concurrency shape that exposed the DuckDBStore threading bug -----
 
 def test_concurrent_metadata_and_strategy_requests_agree(client: TestClient):
