@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from mdc.api.app import create_app
 from mdc.databases.manager import DatabaseManager
 from mdc.schema.loader import load_default_registry
+from mdc.security.tokens import TokenStore
 from mdc.storage.duckdb_store import DuckDBStore
 
 
@@ -37,7 +38,11 @@ def client(tmp_path: Path) -> TestClient:
     store = DuckDBStore(tmp_path / "mdc.duckdb")
     store.init_schema()
     manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
-    return TestClient(create_app(manager))
+    token_store = TokenStore(tmp_path / "api_tokens.json")
+    token = token_store.issue("test-client")
+    test_client = TestClient(create_app(manager, token_store=token_store))
+    test_client.headers.update({"Authorization": f"Bearer {token}"})
+    return test_client
 
 
 # -- section 48 required tests: upload / retrieve / delete, now over HTTP -------
@@ -224,7 +229,10 @@ def test_move_on_a_model_stuck_at_hot_after_a_restart_is_a_clean_404_not_a_500(t
     store = DuckDBStore(tmp_path / "mdc.duckdb")
     store.init_schema()
     manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
-    client = TestClient(create_app(manager))
+    token_store = TokenStore(tmp_path / "api_tokens.json")
+    token = token_store.issue("test-client")
+    client = TestClient(create_app(manager, token_store=token_store))
+    client.headers.update({"Authorization": f"Bearer {token}"})
 
     q = struct.pack("<4f", 1.0, 2.0, 3.0, 4.0)
     content = _safetensors({"layer_0.q": ([4], q)})
@@ -432,6 +440,85 @@ def test_find_endpoint_no_matches_is_still_200(client: TestClient):
     response = client.get("/find", params={"q": "nonexistent-term-xyz"})
     assert response.status_code == 200
     assert response.json()["results"] == []
+
+
+# -- bearer-token access control: custom apps/NLU integrations must present one --
+
+def test_request_without_a_token_is_rejected(tmp_path: Path):
+    store = DuckDBStore(tmp_path / "mdc.duckdb")
+    store.init_schema()
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    bare_client = TestClient(create_app(manager, token_store=TokenStore(tmp_path / "api_tokens.json")))
+    response = bare_client.get("/objects")
+    assert response.status_code == 401
+
+
+def test_request_with_an_invalid_token_is_rejected(tmp_path: Path):
+    store = DuckDBStore(tmp_path / "mdc.duckdb")
+    store.init_schema()
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    bare_client = TestClient(create_app(manager, token_store=TokenStore(tmp_path / "api_tokens.json")))
+    response = bare_client.get("/objects", headers={"Authorization": "Bearer not-a-real-token"})
+    assert response.status_code == 401
+
+
+def test_root_page_does_not_require_a_token(tmp_path: Path):
+    # The built-in browser UI is served from `/` and embeds its own
+    # per-process token in the HTML itself (see api/app.py's
+    # browser_ui()) - a caller can't present a token before it has
+    # loaded the page that contains one.
+    store = DuckDBStore(tmp_path / "mdc.duckdb")
+    store.init_schema()
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    bare_client = TestClient(create_app(manager, token_store=TokenStore(tmp_path / "api_tokens.json")))
+    response = bare_client.get("/")
+    assert response.status_code == 200
+
+
+def test_root_page_embeds_a_working_local_token(tmp_path: Path):
+    store = DuckDBStore(tmp_path / "mdc.duckdb")
+    store.init_schema()
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    bare_client = TestClient(create_app(manager, token_store=TokenStore(tmp_path / "api_tokens.json")))
+    html = bare_client.get("/").text
+    assert "__MDC_LOCAL_UI_TOKEN__" not in html  # placeholder was substituted, not leaked verbatim
+
+    import re
+
+    match = re.search(r'const token = "([^"]+)"', html)
+    assert match is not None
+    embedded_token = match.group(1)
+
+    response = bare_client.get("/objects", headers={"Authorization": f"Bearer {embedded_token}"})
+    assert response.status_code == 200
+
+
+def test_token_issued_after_the_server_started_is_still_accepted(tmp_path: Path):
+    # Reproduces the real workflow: `mdc serve` is already running when a
+    # separate `mdc token issue <name>` process (a different TokenStore
+    # instance, same file) issues a new token - the running server must
+    # recognize it without a restart.
+    store = DuckDBStore(tmp_path / "mdc.duckdb")
+    store.init_schema()
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    token_path = tmp_path / "api_tokens.json"
+    server_token_store = TokenStore(token_path)  # what the running server holds
+    bare_client = TestClient(create_app(manager, token_store=server_token_store))
+
+    later_token = TokenStore(token_path).issue("issued-after-server-started")  # a separate process/instance
+
+    response = bare_client.get("/objects", headers={"Authorization": f"Bearer {later_token}"})
+    assert response.status_code == 200
+
+
+def test_env_var_token_is_accepted_without_the_on_disk_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    store = DuckDBStore(tmp_path / "mdc.duckdb")
+    store.init_schema()
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    monkeypatch.setenv("MDC_API_TOKENS", "ci-deploy-token,another-one")
+    bare_client = TestClient(create_app(manager, token_store=TokenStore(tmp_path / "api_tokens.json")))
+    response = bare_client.get("/objects", headers={"Authorization": "Bearer ci-deploy-token"})
+    assert response.status_code == 200
 
 
 def test_cors_allows_a_cross_origin_request(client: TestClient):

@@ -18,6 +18,7 @@ dependencies = [
     "pyyaml>=6.0",
     "fastapi>=0.110",
     "uvicorn>=0.30",
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]

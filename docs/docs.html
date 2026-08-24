@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <title>mdc-lite Documentation</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Installation, quickstart, API reference, and security model for mdc-lite — the embeddable encrypted key-value store for iOS, Android, and desktop.">
+<meta name="description" content="Installation, quickstart, API reference, and security model for mdc-lite — the embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS.">
 <meta name="keywords" content="mdc-lite documentation, embedded database API, Rust key-value store, encryption tutorial, mobile database installation">
 <link rel="canonical" href="https://saji1970.github.io/ModelDB/docs.html">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="mdc-lite">
 <meta property="og:title" content="mdc-lite Documentation">
-<meta property="og:description" content="Installation, quickstart, API reference, and security model for mdc-lite — the embeddable encrypted key-value store for iOS, Android, and desktop.">
+<meta property="og:description" content="Installation, quickstart, API reference, and security model for mdc-lite — the embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS.">
 <meta property="og:url" content="https://saji1970.github.io/ModelDB/docs.html">
 <meta property="og:image" content="https://saji1970.github.io/ModelDB/og-image.png">
 <meta property="og:image:width" content="1200">
@@ -232,16 +232,20 @@ mdc_lite_close(store);</code></pre>
 
     <section id="format">
       <h2>On-disk format</h2>
-      <p>One file per entry, named by a keyed BLAKE3 hash of the logical key (hex-encoded) — so the filename itself never reveals what you stored. Each file's contents:</p>
+      <p>One file per entry, named by a keyed BLAKE3 hash of the logical key (hex-encoded) — so the filename itself never reveals what you stored. The encrypted record is:</p>
       <pre class="code-block"><code>[ 24-byte nonce ][ ciphertext ][ 16-byte auth tag ]</code></pre>
       <p>The plaintext sealed inside that ciphertext is:</p>
       <pre class="code-block"><code>[ u16 LE key_len ][ key_bytes ][ value_bytes ]</code></pre>
-      <p>The logical key travels <em>inside</em> the encrypted payload rather than the filename — that's what lets <code>list_keys()</code> recover key names after decrypting, while a raw directory listing on its own reveals nothing.</p>
+      <p>That record is then <strong>DNA-encoded</strong> before it's written — 2 bits per base, the same mapping <a href="platform.html#tiers">MDC Platform's archive tier</a> uses:</p>
+      <pre class="code-block"><code>00 → A      01 → C      10 → G      11 → T</code></pre>
+      <p>So the file that actually lands on disk is ACGT text, not raw binary. This wraps the <em>ciphertext</em>, never plaintext — the 2-bit mapping above is public (you're reading it), so encoding plaintext directly would only be obfuscation; encryption is what actually makes an entry unreadable without the key. <code>get()</code> reverses both steps: decode the base sequence back to the encrypted record, then decrypt.</p>
+      <p>The logical key travels <em>inside</em> the encrypted payload rather than the filename — that's what lets <code>list_keys()</code> recover key names after decrypting, while a raw directory listing on its own reveals nothing (now literally just base-letter text either way).</p>
+      <p style="color:var(--text-dim); font-size:14px;"><strong>Breaking change from v1.1.0 and earlier:</strong> those versions wrote raw binary, not DNA-encoded text. A v1.1.0 store is not readable by v1.2.0+, and vice versa — there's no migration path for this prototype-stage format change.</p>
     </section>
 
     <section id="security">
       <h2>Security model</h2>
-      <p>Every value and every key name is encrypted with <strong>XChaCha20-Poly1305</strong> — a 256-bit-key, 192-bit-nonce authenticated cipher. A fresh random nonce is generated for every write; XChaCha20's 192-bit nonce space makes that safe with no persistent counter to manage, unlike AES-GCM's narrower 96-bit nonce.</p>
+      <p>Every value and every key name is encrypted with <strong>XChaCha20-Poly1305</strong> — a 256-bit-key, 192-bit-nonce authenticated cipher. A fresh random nonce is generated for every write; XChaCha20's 192-bit nonce space makes that safe with no persistent counter to manage, unlike AES-GCM's narrower 96-bit nonce. The result is then DNA-encoded (see <a href="#format">On-disk format</a>) — that step is for storage consistency with MDC Platform, not additional protection; the encryption above is what actually secures an entry.</p>
       <p>This library never generates, stores, or has any opinion about the key's custody. Losing it is equivalent to losing the data — there's no recovery path, by design. See <a href="#custody">Platform key custody</a> for how the key itself should actually be obtained and stored.</p>
       <h3>On "quantum encryption"</h3>
       <p>Real quantum key distribution (QKD) transmits photons over dedicated fiber or free-space links between two fixed endpoints using specialized hardware — it's a network-link technology, not something deployable inside an app.</p>

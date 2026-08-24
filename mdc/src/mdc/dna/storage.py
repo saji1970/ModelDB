@@ -8,6 +8,12 @@ corrupts anything. Corruption is a separate, explicit research tool
 (`corrupt_and_recover`) that studies reliability *without* mutating
 the actually-stored block - a real backend would be useless if every
 read silently lost data.
+
+Every payload is AES-256-GCM encrypted (`dna/crypto.py`) *before* it's
+DNA-encoded - the stored sequence is ciphertext-as-ACGT, not
+plaintext-as-ACGT, so it's unreadable without the key this backend
+holds (see `security/keys.py`), not just unreadable without knowing
+the public 2-bit-per-base mapping.
 """
 
 from __future__ import annotations
@@ -18,17 +24,20 @@ from datetime import datetime, timezone
 from typing import Any
 
 from mdc.dna.corruption import CorruptionRates, corrupt_sequence
+from mdc.dna.crypto import DecryptionError, decrypt, encrypt
 from mdc.dna.ecc import ECCDecodeResult, RepetitionECC
 from mdc.dna.encoder import DNADecodeError, decode, encode
+from mdc.security.keys import load_or_create_dna_key
 from mdc.storage.interface import StorageBackend
 
 
 class DNAStorageBackend(StorageBackend):
-    def __init__(self, ecc_copies: int = 1):
+    def __init__(self, ecc_copies: int = 1, encryption_key: bytes | None = None):
         if ecc_copies < 1:
             raise ValueError("ecc_copies must be >= 1")
         self.ecc_copies = ecc_copies
         self._ecc = RepetitionECC(copies=ecc_copies) if ecc_copies > 1 else None
+        self._key = encryption_key if encryption_key is not None else load_or_create_dna_key()
         self._sequences: dict[str, list[str]] = {}
         self._metadata: dict[str, dict[str, Any]] = {}
         self._checksums: dict[str, str] = {}
@@ -36,7 +45,8 @@ class DNAStorageBackend(StorageBackend):
 
     def put(self, block_id: str, payload: bytes, metadata: dict[str, Any] | None = None) -> str:
         checksum = hashlib.sha256(payload).hexdigest()
-        copies = self._ecc.encode(payload) if self._ecc else [payload]
+        ciphertext = encrypt(self._key, payload)
+        copies = self._ecc.encode(ciphertext) if self._ecc else [ciphertext]
         self._sequences[block_id] = [encode(copy) for copy in copies]
         self._metadata[block_id] = dict(metadata) if metadata else {}
         self._checksums[block_id] = checksum
@@ -46,11 +56,11 @@ class DNAStorageBackend(StorageBackend):
     def get(self, block_id: str) -> bytes:
         sequences = self._require(block_id)
         if self._ecc is None:
-            return decode(sequences[0])
+            return decrypt(self._key, decode(sequences[0]))
         result = self._ecc.decode([decode(seq) for seq in sequences])
         if result.data is None:
             raise KeyError(f"block {block_id!r} could not be recovered")
-        return result.data
+        return decrypt(self._key, result.data)
 
     def exists(self, block_id: str) -> bool:
         return block_id in self._sequences
@@ -85,7 +95,15 @@ class DNAStorageBackend(StorageBackend):
     def corrupt_and_recover(self, block_id: str, rates: CorruptionRates, seed: int) -> ECCDecodeResult:
         """Simulate corruption on this block's stored sequences and attempt
         recovery, WITHOUT touching the actually-stored data (section 37:
-        research into reliability, not a destructive operation)."""
+        research into reliability, not a destructive operation).
+
+        ECC recovery operates on ciphertext (that's what's actually
+        DNA-encoded); this decrypts the recovered bytes before
+        returning so the result still reflects the original payload.
+        A majority vote that "recovers" the wrong bytes fails AES-GCM's
+        authentication tag rather than silently returning garbage - that
+        counts as recovery failure here, same as a dropped sequence.
+        """
         sequences = self._require(block_id)
         rng = random.Random(seed)
         decoded_copies: list[bytes | None] = []
@@ -100,10 +118,18 @@ class DNAStorageBackend(StorageBackend):
                 decoded_copies.append(None)
 
         if self._ecc is not None:
-            return self._ecc.decode(decoded_copies)
+            result = self._ecc.decode(decoded_copies)
+        else:
+            single = decoded_copies[0] if decoded_copies else None
+            result = ECCDecodeResult(data=single, recovered=False, corrected_byte_count=0, usable_copies=1 if single is not None else 0)
 
-        single = decoded_copies[0] if decoded_copies else None
-        return ECCDecodeResult(data=single, recovered=False, corrected_byte_count=0, usable_copies=1 if single is not None else 0)
+        if result.data is None:
+            return result
+        try:
+            plaintext = decrypt(self._key, result.data)
+        except DecryptionError:
+            return ECCDecodeResult(data=None, recovered=False, corrected_byte_count=result.corrected_byte_count, usable_copies=result.usable_copies)
+        return ECCDecodeResult(data=plaintext, recovered=result.recovered, corrected_byte_count=result.corrected_byte_count, usable_copies=result.usable_copies)
 
     def _require(self, block_id: str) -> list[str]:
         if block_id not in self._sequences:

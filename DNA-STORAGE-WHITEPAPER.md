@@ -6,7 +6,7 @@
 
 ## Abstract
 
-This repository contains two independent, real implementations of a "DNA-inspired" idea: [MDC](mdc/)'s `dna/` module, which encodes arbitrary bytes into simulated DNA base sequences (A/C/G/T) with a working error-correction and corruption-simulation harness, and [MemCell](MEMCELL.md), a compression engine whose pipeline stages are explicitly modeled on biological information storage (codon tables, chromosome-style byte-plane sorting, synaptic-style pattern reuse). Neither performs physical DNA synthesis or sequencing; both are software encodings that borrow DNA's *representational* ideas.
+This repository contains three independent, real implementations of a "DNA-inspired" idea: [MDC](mdc/)'s `dna/` module, which encodes arbitrary bytes into simulated DNA base sequences (A/C/G/T) with a working error-correction and corruption-simulation harness; [mdc-lite](mdc-lite/), whose on-disk format now DNA-encodes every entry the same way (`mdc-lite/src/dna.rs`), so both products share one storage model rather than two similar-but-different ones; and [MemCell](MEMCELL.md), a compression engine whose pipeline stages are explicitly modeled on biological information storage (codon tables, chromosome-style byte-plane sorting, synaptic-style pattern reuse). None perform physical DNA synthesis or sequencing; all three are software encodings that borrow DNA's *representational* ideas.
 
 This document explains that encoding honestly, and then addresses a question that keeps coming up in the same breath as "DNA storage": **what does quantum computing have to do with any of this?** The honest answer is: nothing about the encoding itself, but something real and specific about the *cryptography* protecting data meant to survive as long as DNA storage's own value proposition claims it can. We explain exactly where that connection is real, and correct the more common version of the question - "is this quantum encryption?" - which conflates two unrelated technologies.
 
@@ -22,7 +22,9 @@ This document explains that encoding honestly, and then addresses a question tha
 00 -> A      01 -> C      10 -> G      11 -> T
 ```
 
-Every byte becomes exactly 4 bases. This is the same information-density idea DNA storage research is built on: 2 bits per symbol, 4 symbols per byte, no padding ambiguity on decode. It is a **simulation** - a string of `ACGT` characters in a database, not a molecule. No physical synthesis, no sequencing, no wet lab anywhere in this repository.
+Every byte becomes exactly 4 bases. This is the same information-density idea DNA storage research is built on: 2 bits per symbol, 4 symbols per byte, no padding ambiguity on decode. It is a **simulation** - a string of `ACGT` characters in a database (MDC) or a file (mdc-lite), not a molecule. No physical synthesis, no sequencing, no wet lab anywhere in this repository.
+
+Both implementations apply this mapping to *ciphertext*, never plaintext: the mapping above is public - reading this document teaches it to anyone - so encoding plaintext directly would only be obfuscation, easily reversed by anyone who's read this far. Encryption (AES-256-GCM in MDC's `dna/` module, XChaCha20-Poly1305 in mdc-lite) is applied first; the DNA encoding wraps the resulting ciphertext. That ordering is what makes a stored entry actually unreadable without the key, not the base-letter representation itself.
 
 ### 1.2 Redundancy the way DNA storage actually needs it
 
@@ -65,7 +67,7 @@ DNA storage's entire value proposition - the reason the research field exists at
 
 The practical implication for a real DNA-archival system, if it ever needs asymmetric cryptography (key exchange between parties, digital signatures for provenance) is straightforward: use **post-quantum cryptography (PQC)** from the start, specifically the algorithms NIST has standardized - **ML-KEM** (formerly Kyber) for key encapsulation and **ML-DSA** (formerly Dilithium) for signatures - rather than RSA/ECC, since data written today may still need to be confidential decades from now.
 
-**What this repository actually does today:** nothing that needs this. MDC's DNA-encoding tier and mdc-lite's local encrypted store both use only **symmetric** cryptography (checksums and, in mdc-lite's case, XChaCha20-Poly1305) - no asymmetric key exchange happens anywhere in either project. Per §2.1, that means the quantum threat model here is already close to a non-issue: a 256-bit symmetric key stays secure under Grover's algorithm. Post-quantum asymmetric cryptography is a **forward-looking design recommendation** for if/when this project ever adds remote key exchange or multi-party archival provenance (a genuinely plausible future direction for a real DNA-archival product) - not a gap in what exists now, because nothing here currently has the asymmetric-crypto attack surface PQC exists to protect.
+**What this repository actually does today:** nothing that needs this. MDC's DNA-encoding tier (AES-256-GCM) and mdc-lite's local encrypted store (XChaCha20-Poly1305) both use only **symmetric** cryptography - no asymmetric key exchange happens anywhere in either project. Per §2.1, that means the quantum threat model here is already close to a non-issue: a 256-bit symmetric key stays secure under Grover's algorithm. Post-quantum asymmetric cryptography is a **forward-looking design recommendation** for if/when this project ever adds remote key exchange or multi-party archival provenance (a genuinely plausible future direction for a real DNA-archival product) - not a gap in what exists now, because nothing here currently has the asymmetric-crypto attack surface PQC exists to protect.
 
 ### 2.4 Crypto-agility as the actual design principle
 
@@ -77,11 +79,14 @@ The concrete, buildable takeaway for a system with DNA storage's retention horiz
 
 | Claim | Status |
 |---|---|
-| Binary-to-DNA-base encoding (2 bits/base, A/C/G/T) | **Real, implemented**, [`dna/encoder.py`](mdc/src/mdc/dna/encoder.py) |
+| Binary-to-DNA-base encoding (2 bits/base, A/C/G/T) | **Real, implemented** in both products - [`mdc/dna/encoder.py`](mdc/src/mdc/dna/encoder.py) and [`mdc-lite/src/dna.rs`](mdc-lite/src/dna.rs) |
+| Encryption applied before DNA encoding, both products | **Real, implemented** - AES-256-GCM (MDC) / XChaCha20-Poly1305 (mdc-lite); the encoding wraps ciphertext, never plaintext |
 | N-way repetition ECC with majority voting | **Real, implemented**, [`dna/ecc.py`](mdc/src/mdc/dna/ecc.py) |
 | Corruption simulation (substitution/insertion/deletion/dropout) | **Real, implemented, synthetic data**, [`dna/corruption.py`](mdc/src/mdc/dna/corruption.py) |
 | Physical DNA synthesis or sequencing | **Does not exist in this repository** |
+| Bearer-token authentication on MDC's REST API | **Real, implemented** - [`security/tokens.py`](mdc/src/mdc/security/tokens.py), issued via `mdc token issue` |
 | "Quantum encryption" (QKD) | **Not used, not applicable to local/archival storage** |
 | Quantum computers threaten this project's symmetric crypto today | **No** - Grover's algorithm leaves 256-bit keys secure |
 | Post-quantum asymmetric crypto (ML-KEM/ML-DSA) | **Not needed today** (no asymmetric crypto exists here yet); a real, honest recommendation *if* remote key exchange is ever added |
 | DNA storage's real research value | Density + archival durability - an active research hypothesis, not an established product claim (CLAUDE.md section 55) |
+| Windows CLI bridge into an mdc-lite store; stronger DNA-tier ECC | **Phase 2, not yet built** - roadmap items for MDC Platform's storage side |

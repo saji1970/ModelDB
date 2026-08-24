@@ -24,9 +24,17 @@
 //! ## On-disk format
 //!
 //! One file per entry, named `blake3_keyed_hash(store_key, logical_key)`
-//! (hex-encoded) so filenames don't leak plaintext key names. Each file
-//! is `[24-byte nonce][ciphertext][16-byte auth tag]`, where the
-//! plaintext under that ciphertext is `[u16 LE key_len][key_bytes][value_bytes]`.
+//! (hex-encoded) so filenames don't leak plaintext key names. The
+//! encrypted record - `[24-byte nonce][ciphertext][16-byte auth tag]`,
+//! where the plaintext under that ciphertext is
+//! `[u16 LE key_len][key_bytes][value_bytes]` - is then DNA-encoded
+//! (`dna.rs`, the same 2-bit-per-base mapping MDC Platform's DNA tier
+//! uses) before being written, so the file on disk is ACGT text, not
+//! raw binary: `mdc-lite storage-inspired-by-DNA` isn't just a name,
+//! the bytes on the filesystem actually are a base sequence. That
+//! sequence is ciphertext, not plaintext, DNA-encoded - the mapping
+//! itself is public, so it's the encryption underneath, not the
+//! encoding on top, that makes a file unreadable without the key.
 //! The logical key travels inside the encrypted payload rather than the
 //! filename, so `list_keys()` can recover it after decrypting while a
 //! directory listing alone reveals nothing.
@@ -127,9 +135,10 @@ impl LiteStore {
             .encrypt(&nonce, plaintext.as_ref())
             .map_err(|_| LiteStoreError::Crypto)?;
 
-        let mut file_bytes = Vec::with_capacity(NONCE_LEN + ciphertext.len());
-        file_bytes.extend_from_slice(nonce.as_slice());
-        file_bytes.extend_from_slice(&ciphertext);
+        let mut record_bytes = Vec::with_capacity(NONCE_LEN + ciphertext.len());
+        record_bytes.extend_from_slice(nonce.as_slice());
+        record_bytes.extend_from_slice(&ciphertext);
+        let file_bytes = crate::dna::encode(&record_bytes);
 
         let path = self.path_for(key);
         // Write to a temp file and rename - never leaves a partially
@@ -194,10 +203,11 @@ impl LiteStore {
 
     fn read_entry(&self, path: &Path) -> Result<(String, Vec<u8>), LiteStoreError> {
         let file_bytes = fs::read(path)?;
-        if file_bytes.len() < NONCE_LEN + TAG_LEN {
+        let record_bytes = crate::dna::decode(&file_bytes).ok_or(LiteStoreError::Corrupt)?;
+        if record_bytes.len() < NONCE_LEN + TAG_LEN {
             return Err(LiteStoreError::Corrupt);
         }
-        let (nonce_bytes, ciphertext) = file_bytes.split_at(NONCE_LEN);
+        let (nonce_bytes, ciphertext) = record_bytes.split_at(NONCE_LEN);
         let nonce = XNonce::from_slice(nonce_bytes);
         let plaintext = self
             .cipher()
@@ -217,6 +227,7 @@ impl LiteStore {
     }
 }
 
+pub mod dna;
 pub mod ffi;
 
 #[cfg(test)]
@@ -304,12 +315,14 @@ mod tests {
         let store = LiteStore::open(dir.path(), key(1)).unwrap();
         store.put("k", b"original value").unwrap();
 
-        // Flip a byte in the middle of the on-disk file (well past the
-        // nonce) - simulates corruption or tampering.
+        // Swap one base for a different valid base in the middle of the
+        // on-disk file (well past the nonce) - still valid ACGT text, so
+        // this exercises AES's own authentication tag rather than the
+        // DNA-decode length/symbol check exercised by the test below.
         let path = store.path_for("k");
         let mut bytes = fs::read(&path).unwrap();
         let mid = bytes.len() / 2;
-        bytes[mid] ^= 0xFF;
+        bytes[mid] = if bytes[mid] == b'A' { b'C' } else { b'A' };
         fs::write(&path, &bytes).unwrap();
 
         assert!(matches!(store.get("k"), Err(LiteStoreError::Crypto)));
@@ -341,5 +354,40 @@ mod tests {
         let value: Vec<u8> = (0..=255u8).collect();
         store.put("k", &value).unwrap();
         assert_eq!(store.get("k").unwrap(), value);
+    }
+
+    #[test]
+    fn on_disk_file_is_acgt_text_not_raw_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LiteStore::open(dir.path(), key(1)).unwrap();
+        store.put("k", b"some value").unwrap();
+
+        let bytes = fs::read(store.path_for("k")).unwrap();
+        assert!(!bytes.is_empty());
+        assert!(bytes.iter().all(|b| matches!(b, b'A' | b'C' | b'G' | b'T')));
+    }
+
+    #[test]
+    fn on_disk_file_does_not_contain_the_plaintext_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LiteStore::open(dir.path(), key(1)).unwrap();
+        let value = b"a value the file must not leak, ACGT-encoded or not";
+        store.put("k", value).unwrap();
+
+        let bytes = fs::read(store.path_for("k")).unwrap();
+        assert!(!bytes.windows(value.len()).any(|w| w == value));
+        assert_ne!(bytes, crate::dna::encode(value));
+    }
+
+    #[test]
+    fn corrupted_dna_sequence_is_a_clean_corrupt_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LiteStore::open(dir.path(), key(1)).unwrap();
+        store.put("k", b"value").unwrap();
+
+        let path = store.path_for("k");
+        fs::write(&path, b"not valid ACGT text at all!").unwrap();
+
+        assert!(matches!(store.get("k"), Err(LiteStoreError::Corrupt)));
     }
 }

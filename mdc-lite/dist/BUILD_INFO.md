@@ -1,4 +1,4 @@
-# mdc-lite v1.1.0 - Release Build Manifest
+# mdc-lite v1.2.0 - Release Build Manifest
 
 Built and verified 2026-08-24 on macOS (Apple Silicon), rustc 1.91.1
 (stable-aarch64-apple-darwin toolchain), release profile
@@ -6,7 +6,7 @@ Built and verified 2026-08-24 on macOS (Apple Silicon), rustc 1.91.1
 `../Cargo.toml`).
 
 Every file below is verified in **this exact way**: `cargo test`
-(14/14 passing, native macOS) before packaging, then `cargo build
+(23/23 passing, native macOS) before packaging, then `cargo build
 --release --target <triple>` per platform, checked for successful
 completion and a real, correctly-formatted output binary (`file`
 confirms ELF/PE/Mach-O type and architecture for every artifact).
@@ -17,14 +17,19 @@ altered after this build.
 
 | Platform | Target triple | Artifact | Size | Verified |
 |---|---|---|---|---|
-| macOS (Apple Silicon) | `aarch64-apple-darwin` | `macos-arm64/libmdc_lite.dylib` | 345 KB | Built + `cargo test` passing natively on this exact target |
-| Windows x86_64 | `x86_64-pc-windows-gnu` | `windows-x86_64/mdc_lite.dll` | 991 KB | Cross-compiled + linked successfully (mingw-w64 toolchain); **not executed** - no Wine available in this environment to run a Windows binary on macOS |
+| macOS (Apple Silicon) | `aarch64-apple-darwin` | `macos-arm64/libmdc_lite.dylib` | 348 KB | Built + `cargo test` passing natively on this exact target |
+| Windows x86_64 | `x86_64-pc-windows-gnu` | `windows-x86_64/mdc_lite.dll` | 992 KB | Cross-compiled + linked successfully (mingw-w64 toolchain); **not executed** - no Wine available in this environment to run a Windows binary on macOS |
 | Windows x86_64 | `x86_64-pc-windows-gnu` | `windows-x86_64/libmdc_lite.dll.a` (import lib) | 5.4 KB | Produced alongside the DLL, for linking against it |
-| Android arm64-v8a | `aarch64-linux-android` | `android/arm64-v8a/libmdc_lite.so` | 372 KB | Cross-compiled with the real Android NDK (r29) clang toolchain; ELF confirmed `ARM aarch64, stripped` |
-| Android armeabi-v7a | `armv7-linux-androideabi` | `android/armeabi-v7a/libmdc_lite.so` | 250 KB | Same NDK toolchain; ELF confirmed `ARM, EABI5, stripped` |
-| Android x86_64 | `x86_64-linux-android` | `android/x86_64/libmdc_lite.so` | 482 KB | Same NDK toolchain; ELF confirmed `x86-64, stripped` (emulator use) |
+| Android arm64-v8a | `aarch64-linux-android` | `android/arm64-v8a/libmdc_lite.so` | 376 KB | Cross-compiled with the real Android NDK (r29) clang toolchain; ELF confirmed `ARM aarch64, stripped` |
+| Android armeabi-v7a | `armv7-linux-androideabi` | `android/armeabi-v7a/libmdc_lite.so` | 252 KB | Same NDK toolchain; ELF confirmed `ARM, EABI5, stripped` |
+| Android x86_64 | `x86_64-linux-android` | `android/x86_64/libmdc_lite.so` | 484 KB | Same NDK toolchain; ELF confirmed `x86-64, stripped` (emulator use) |
 
 `include/mdc_lite.h` - the C header, identical across every platform above.
+
+Every artifact above targets **mobile and wearable embedding, and
+desktop/CLI interop only** - see "On mdc-lite and desktop" below for
+why the macOS/Windows builds exist despite mdc-lite not being a
+desktop product itself.
 
 ## What's NOT included, and exactly why
 
@@ -57,30 +62,48 @@ actually load and exercise the library at runtime.
 
 `cargo build --release` also produces `libmdc_lite.a`, but it isn't
 included in this bundle - a static archive bundles *unstripped* object
-code for every dependency (17 MB for this crate), which is not what
+code for every dependency (14 MB for this crate), which is not what
 ends up in a consuming app (the final app's linker performs dead-code
 elimination against it, the same way it does for the rest of the
 binary) and would misrepresent this project's actual footprint sitting
-next to a 345 KB `.dylib`. If you need it, `cargo build --release`
+next to a 353 KB `.dylib`. If you need it, `cargo build --release`
 from source produces it directly - it's not a hard-to-reproduce
 artifact, just one not worth bundling.
 
-## What changed since v0.1.0
+## On mdc-lite and desktop
 
-No source changes to the crate itself - `src/lib.rs` and `src/ffi.rs`
-are unchanged, same 14 tests, same API. This release exists to fix a
-real bug caught while rebuilding these exact artifacts: rebuilding the
-Android targets with the *documented* env vars (`CC_*`/`AR_*` only, no
-`CARGO_TARGET_<TRIPLE>_LINKER`) failed outright with `ld: unknown
-options: --version-script=...` - cargo's own linker resolution for
-these targets was falling through to the host's system linker (Apple's
-ld, which doesn't understand the ELF-target flags rustc was passing
-it), not the NDK's. `CC_*`/`AR_*` alone was never sufficient; it only
-covers the `blake3` dependency's own C build script, a separate step
-from cargo's Rust-level link. The README and docs site's Android
-build instructions were wrong in v0.1.0 and are fixed as of this
-release - verified by reproducing the failure, then reproducing the
-fix, before documenting either.
+mdc-lite is a **mobile/wearable embeddable library** - it has no CLI
+and no standalone desktop app, and never has. The macOS and Windows
+builds in this bundle exist for two reasons that are not "mdc-lite as
+a desktop product": (1) so a desktop-hosted companion app for a
+mobile/wearable product can embed the same store format on the desktop
+side, and (2) so MDC Platform's own CLI can, on a roadmap basis, open
+an mdc-lite store directory directly when a phone or wearable is
+connected to a Windows machine (tracked as a Phase 2 item, not yet
+built - see `../../DNA-STORAGE-WHITEPAPER.md`). Neither reason makes
+mdc-lite itself a desktop product.
+
+## What changed since v1.1.0
+
+**On-disk format change (breaking):** every entry's encrypted bytes
+(`[nonce][ciphertext][tag]`, unchanged) are now DNA-encoded (`src/dna.rs`,
+the same 2-bit-per-base `00→A 01→C 10→G 11→T` mapping MDC Platform's
+DNA tier uses) before being written to disk - so a v1.2.0 store's files
+are ACGT text, not raw binary, matching the DNA-inspired storage model
+across both mdc-lite and MDC Platform rather than just this crate's
+name alluding to it. **v1.1.0 stores are not readable by v1.2.0 and
+vice versa** - there is no migration path for this prototype-stage
+format change; re-write existing entries with the new version if you
+have any. The DNA encoding is applied to ciphertext, never plaintext -
+the 2-bit mapping itself is public, so encoding plaintext directly
+would only be obfuscation, not protection; encrypting first is what
+actually makes a file unreadable without the key.
+
+23 tests now (up from 14): 6 new tests in `src/dna.rs` for the
+encoding round-trip, plus 3 new tests in `src/lib.rs` confirming the
+on-disk file is genuinely ACGT text, doesn't contain the plaintext
+value, and that a corrupted (non-ACGT) file produces a clean
+`Corrupt` error rather than a panic.
 
 ## Toolchain versions used
 

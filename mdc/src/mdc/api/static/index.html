@@ -133,6 +133,21 @@
 </style>
 </head>
 <body>
+<script>
+  // A per-process token the server issues to this page (see api/app.py:
+  // browser_ui()) - every other route requires it, so this UI needs it
+  // too, same as any other caller of the API. Wrapping fetch once here
+  // means none of the calls below have to know about it individually.
+  (() => {
+    const token = "__MDC_LOCAL_UI_TOKEN__";
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+      const headers = new Headers(init.headers || {});
+      if (!headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
+      return originalFetch(input, { ...init, headers });
+    };
+  })();
+</script>
 <div id="app">
 
   <div id="toolbar">

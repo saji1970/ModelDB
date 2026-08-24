@@ -1,8 +1,8 @@
-369fc836e54da526abdf25e4ad6c8bf31c203d9ef7047ff3825a1b95f89597ad  ./BUILD_INFO.md
-43e930e43d45accad821936abe872904c4659c5522bf6f4a7f6ca4ac413e64f9  ./android/arm64-v8a/libmdc_lite.so
-d1e08e5bcee3bff87d7bbd35a59cd21af67fe715f45a1d97c3cb768c107d6aff  ./android/armeabi-v7a/libmdc_lite.so
-7760ad0b535244ca60705be4f6ced6ac8818c96d743194d0308e23f652e8771b  ./android/x86_64/libmdc_lite.so
+c46c9a400ccae8ddf80c72d9df425ed59d7e5704cc5147d4bdc78ab8c613721b  ./BUILD_INFO.md
+2ba0bf514bca10ebc35eaec0d566b7586ee0daaada7d842c19af2163d8225449  ./android/arm64-v8a/libmdc_lite.so
+bb02c1bc4daa5237566b4072af0e451c1d1778f3c45dafafbf10afcb80c87540  ./android/armeabi-v7a/libmdc_lite.so
+336537dc6d802f8ffd1868279ad3272b29adb025d2fc06ee074c8f36937deb75  ./android/x86_64/libmdc_lite.so
 3ef132c4f50be7ef927c37130eb96395e6c1b526fc049321cc97e7a49f5c3634  ./include/mdc_lite.h
-f8b05e820ff007673988d677fc80939d934eba5c275e4ec4f79f8b2e97fdb567  ./macos-arm64/libmdc_lite.dylib
-cf9b3bb2b3be43b78042327eb2b6100f7aab7ba52c37b69dbf3f901a241be47a  ./windows-x86_64/libmdc_lite.dll.a
-41637952af3e94fc51d042ebd46cb937cab4f08d0f0a297fa8ce21db160dd4fb  ./windows-x86_64/mdc_lite.dll
+4e2dbc5ff7c9dd816188b40eafabc1fe3db321a87a003075f88267717484430d  ./macos-arm64/libmdc_lite.dylib
+50616e1cc0410b6a5c4306c4effa70d7b2fb0c2990744eca73f1354e6be180fd  ./windows-x86_64/libmdc_lite.dll.a
+dd32413b41de517bc580670d4e37408811bd15dfb02c201141edf942e181c8bc  ./windows-x86_64/mdc_lite.dll

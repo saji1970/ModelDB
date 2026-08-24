@@ -11,6 +11,20 @@ into a mobile or wearable app - the native counterpart to
 for a completely different constraint set: no server process, no
 language runtime, small enough to link straight into an app binary.
 
+**mdc-lite is mobile/wearable only.** It has no CLI and no standalone
+desktop app - the macOS and Windows builds in [dist/](dist/) exist so a
+desktop-hosted companion app can embed the same store format, and so
+MDC Platform's own CLI can (roadmap item, see the whitepaper) open an
+mdc-lite store when a phone or wearable is connected to a Windows
+machine. Neither of those makes mdc-lite itself a desktop product.
+
+**mdc-lite stores small generic objects - not AI models.** Settings,
+credentials, small cached blobs, session state: things a phone or
+watch app actually needs on-device. Model storage lives entirely on
+[MDC Platform](../mdc/), which has the storage tiers and object
+classification an AI model needs; mdc-lite's raw put/get interface
+doesn't know or care what shape a value has.
+
 Standalone by design for now: it does not talk to the Python MDC server
 over a network, and has no built-in sync protocol. It's a local,
 on-device store.
@@ -42,9 +56,12 @@ below.
 
 Without the correct key, someone holding the raw store directory sees
 only random-looking filenames (key names are hashed with a keyed
-BLAKE3 hash, not stored in the clear) and authenticated ciphertext
-blobs. There is no recovery path if the key is lost - that's the
-tradeoff, by design.
+BLAKE3 hash, not stored in the clear) and authenticated ciphertext -
+DNA-encoded as an ACGT base sequence before it ever touches disk (see
+[On-disk format](#on-disk-format) below), so a raw `cat` of an entry
+shows base-pair text, not binary, and it's still unreadable without
+the key either way. There is no recovery path if the key is lost -
+that's the tradeoff, by design.
 
 **On "quantum encryption":** real quantum key distribution needs
 dedicated fiber/free-space hardware between two fixed endpoints - it's
@@ -60,13 +77,26 @@ store), so there's no asymmetric attack surface here to begin with.
 
 ## On-disk format
 
-One file per entry: `<blake3_keyed_hash(store_key, logical_key) as hex>.mdclite`,
-containing `[24-byte nonce][ciphertext][16-byte auth tag]`. The
-plaintext under that ciphertext is `[u16 LE key_len][key_bytes][value_bytes]`
-- the logical key travels inside the encrypted payload (not the
-filename), so `list_keys()` can recover it after decrypting while a
-raw directory listing alone reveals nothing. See `src/lib.rs`'s module
-doc for the full threat-model writeup.
+One file per entry: `<blake3_keyed_hash(store_key, logical_key) as hex>.mdclite`.
+The encrypted record - `[24-byte nonce][ciphertext][16-byte auth tag]`,
+plaintext underneath being `[u16 LE key_len][key_bytes][value_bytes]`
+- is then DNA-encoded (`src/dna.rs`, the same 2-bit-per-base
+`00→A 01→C 10→G 11→T` mapping [MDC Platform's DNA
+tier](../mdc/src/mdc/dna/encoder.py) uses) before being written, so
+the file on disk is ACGT text, not raw binary - the same storage model
+on both products, not just a name. The DNA encoding wraps *ciphertext*,
+never plaintext: the 2-bit mapping is public (this file documents it),
+so encoding plaintext directly would only be obfuscation, not
+protection - encryption is what actually makes an entry unreadable
+without the key. The logical key travels inside the encrypted payload
+(not the filename), so `list_keys()` can recover it after decrypting
+while a raw directory listing alone reveals nothing. See `src/lib.rs`'s
+module doc for the full threat-model writeup.
+
+**v1.1.0 and earlier stores are not compatible with v1.2.0+** - this
+was a breaking on-disk format change (raw binary → DNA-encoded), not
+additive. There is no migration path for this prototype-stage format;
+re-`put()` existing entries under the new version if you have any.
 
 ## API
 
@@ -94,11 +124,11 @@ Native (this machine, for `cargo test` / development):
 cargo build --release
 ```
 
-Verified in this environment: `cargo test` (14/14 passing), zero
-clippy warnings, and a size-optimized native release build - **345 KB**
+Verified in this environment: `cargo test` (23/23 passing), zero
+clippy warnings, and a size-optimized native release build - **348 KB**
 for the stripped `.dylib` (`opt-level = "z"`, LTO, `panic = "abort"`,
 symbols stripped; see `Cargo.toml`'s `[profile.release]`). The `.a`
-static archive is larger (~17 MB) because it bundles unstripped object
+static archive is larger (~14 MB) because it bundles unstripped object
 code for every dependency - that is *not* what ends up in your app; the
 final app linker performs dead-code elimination against the static lib
 the same way it does for the rest of your binary, so the real per-app
@@ -267,6 +297,11 @@ fun getOrCreateStoreKey(context: Context): ByteArray {
 
 ## What this deliberately is not
 
+- No standalone CLI or desktop app - mobile/wearable embedding only
+  (see the note at the top of this README for why macOS/Windows builds
+  still exist).
+- No AI model storage - a raw key-value store doesn't have the tiering
+  or classification that needs; that's [MDC Platform](../mdc/)'s job.
 - No query language, no schema, no filters - it's a raw encrypted
   key-value store. Layer your own indexing on top if you need it.
 - No compaction or space reclamation beyond deleting a file on

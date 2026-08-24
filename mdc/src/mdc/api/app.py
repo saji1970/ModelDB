@@ -14,9 +14,11 @@ integration (a RASA custom action, a hand-rolled chat UI, anything
 else) can call this API from a different origin without a browser
 CORS rejection getting in the way first - see the module docstring on
 `/nlp/*` for why this is genuinely the point of this API surface, not
-an oversight. There is still no authentication anywhere in this
-project (a separate, pre-existing gap) - open CORS plus no auth means
-this must not be deployed reachable from the open internet as-is.
+an oversight. Open CORS was never itself a security boundary against a
+non-browser client, so every route except the browser UI's own HTML
+page now requires a bearer token (`security/tokens.py`) - the actual
+access control a third-party caller is expected to hold, issued via
+`mdc token issue <name>` or the `MDC_API_TOKENS` env var.
 """
 
 from __future__ import annotations
@@ -24,9 +26,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from mdc.api.chat import ChatEngine
@@ -39,11 +41,13 @@ from mdc.model.operation import CreateOperation, ReadOperation
 from mdc.models.errors import ModelNotFoundError, TensorNotFoundError
 from mdc.nlp.db_command import VALID_FIELD_TYPES, DatabaseCommand, DatabaseIntent
 from mdc.schema.registry import CollectionNotFoundError, FieldSchema, SchemaError
+from mdc.security.tokens import TokenStore
 from mdc.storage_intelligence.analyzer import AccessProfile
 from mdc.storage_intelligence.router import DataIntegrityError, ObjectNotFoundError
 from mdc.storage_intelligence.strategy import StorageTier
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
+_LOCAL_UI_TOKEN_NAME = "local-browser-ui"
 
 
 class MoveRequest(BaseModel):
@@ -79,7 +83,7 @@ class OptimizeRequest(BaseModel):
     mutation_frequency: float = 0.0
 
 
-def create_app(manager: DatabaseManager) -> FastAPI:
+def create_app(manager: DatabaseManager, token_store: TokenStore | None = None) -> FastAPI:
     # /objects, /models, and /chat's default session all operate on the
     # DEFAULT database for backward compatibility - `POST /databases` and
     # the chat panel are how a caller reaches any other one (chat is
@@ -87,6 +91,14 @@ def create_app(manager: DatabaseManager) -> FastAPI:
     # `conversation.interpreter`'s module docstring).
     service = manager.get(DEFAULT_DATABASE).object_service
     chat_engine = ChatEngine(manager)
+    token_store = token_store or TokenStore()
+    # Re-issued every process start (revoking any previous one first) -
+    # the built-in UI is templated fresh on every `GET /` anyway, so
+    # there's no state to lose, and it means a leaked/stale copy of the
+    # served HTML stops working the moment the server restarts.
+    token_store.revoke(_LOCAL_UI_TOKEN_NAME)
+    local_ui_token = token_store.issue(_LOCAL_UI_TOKEN_NAME)
+
     app = FastAPI(title="MDC Universal Object API")
     app.add_middleware(
         CORSMiddleware,
@@ -98,15 +110,23 @@ def create_app(manager: DatabaseManager) -> FastAPI:
     def _not_found(exc: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(exc))
 
-    @app.get("/")
-    def browser_ui() -> FileResponse:
-        return FileResponse(_STATIC_DIR / "index.html")
+    def _require_token(authorization: str | None = Header(default=None)) -> None:
+        token = authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else None
+        if not token_store.verify(token or ""):
+            raise HTTPException(status_code=401, detail="Missing or invalid API token. Issue one with `mdc token issue <name>` or set MDC_API_TOKENS.")
 
-    @app.get("/databases")
+    router = APIRouter(dependencies=[Depends(_require_token)])
+
+    @app.get("/")
+    def browser_ui() -> HTMLResponse:
+        html = (_STATIC_DIR / "index.html").read_text()
+        return HTMLResponse(html.replace("__MDC_LOCAL_UI_TOKEN__", local_ui_token))
+
+    @router.get("/databases")
     def list_databases() -> dict[str, Any]:
         return {"databases": manager.list_names()}
 
-    @app.post("/databases", status_code=201)
+    @router.post("/databases", status_code=201)
     def create_database(body: CreateDatabaseRequest) -> dict[str, Any]:
         try:
             manager.create(body.name)
@@ -114,7 +134,7 @@ def create_app(manager: DatabaseManager) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"name": body.name}
 
-    @app.get("/databases/{name}/tables")
+    @router.get("/databases/{name}/tables")
     def list_database_tables(name: str) -> dict[str, Any]:
         try:
             handle = manager.get(name)
@@ -128,7 +148,7 @@ def create_app(manager: DatabaseManager) -> FastAPI:
             ],
         }
 
-    @app.post("/databases/{name}/tables/{table}", status_code=201)
+    @router.post("/databases/{name}/tables/{table}", status_code=201)
     def create_table(name: str, table: str, body: CreateTableRequest) -> dict[str, Any]:
         """Structured table creation - the REST counterpart to chat's
         "create table X with sku string, price decimal", for a caller
@@ -150,7 +170,7 @@ def create_app(manager: DatabaseManager) -> FastAPI:
         manager.persist_schema(name)
         return {"database": name, "table": table, "fields": list(body.fields)}
 
-    @app.post("/databases/{name}/tables/{table}/rows", status_code=201)
+    @router.post("/databases/{name}/tables/{table}/rows", status_code=201)
     def insert_row(name: str, table: str, body: InsertRowRequest) -> dict[str, Any]:
         """Structured row insertion - the REST counterpart to chat's
         "insert into X sku=ABC123, price=9.99"."""
@@ -167,7 +187,7 @@ def create_app(manager: DatabaseManager) -> FastAPI:
         record = result.records[0]
         return {"database": name, "table": table, "record_id": record.record_id, **record.fields}
 
-    @app.get("/find")
+    @router.get("/find")
     def find(
         q: str | None = None,
         min: float | None = None,
@@ -187,7 +207,7 @@ def create_app(manager: DatabaseManager) -> FastAPI:
         result = handle_database_command(StorageConversationState(), manager, command)
         return {"message": result.message, "results": result.data or []}
 
-    @app.get("/databases/{name}/tables/{table}")
+    @router.get("/databases/{name}/tables/{table}")
     def get_database_table(name: str, table: str) -> dict[str, Any]:
         try:
             handle = manager.get(name)
@@ -203,7 +223,7 @@ def create_app(manager: DatabaseManager) -> FastAPI:
             "fields": [{"name": f.name, "type": f.datatype, "required": f.required} for f in collection.fields.values()],
         }
 
-    @app.get("/databases/{name}/tables/{table}/rows")
+    @router.get("/databases/{name}/tables/{table}/rows")
     def get_database_table_rows(name: str, table: str) -> dict[str, Any]:
         try:
             handle = manager.get(name)
@@ -220,30 +240,30 @@ def create_app(manager: DatabaseManager) -> FastAPI:
             "count": result.count,
         }
 
-    @app.get("/objects")
+    @router.get("/objects")
     def list_objects(type: str | None = None, tier: str | None = None) -> dict[str, Any]:
         object_type = DataType(type) if type else None
         storage_tier = StorageTier(tier) if tier else None
         return {"objects": service.list_objects(object_type=object_type, storage_tier=storage_tier)}
 
-    @app.post("/chat")
+    @router.post("/chat")
     def chat(body: ChatRequest) -> dict[str, Any]:
         reply = chat_engine.handle(body.session_id, body.message)
         return {"message": reply.message, "data": reply.data}
 
-    @app.post("/objects", status_code=201)
+    @router.post("/objects", status_code=201)
     async def upload_object(request: Request, filename: str | None = None) -> dict[str, Any]:
         content = await request.body()
         return service.upload(content, filename=filename)
 
-    @app.get("/objects/{object_id}")
+    @router.get("/objects/{object_id}")
     def get_object_metadata(object_id: str) -> dict[str, Any]:
         try:
             return service.get_metadata(object_id)
         except ObjectNotFoundError as exc:
             raise _not_found(exc) from exc
 
-    @app.post("/objects/{object_id}/read")
+    @router.post("/objects/{object_id}/read")
     def read_object(object_id: str) -> Response:
         try:
             content = service.read(object_id)
@@ -253,12 +273,12 @@ def create_app(manager: DatabaseManager) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return Response(content=content, media_type="application/octet-stream")
 
-    @app.put("/objects/{object_id}")
+    @router.put("/objects/{object_id}")
     async def replace_object(object_id: str, request: Request, filename: str | None = None) -> dict[str, Any]:
         content = await request.body()
         return service.replace(object_id, content, filename=filename)
 
-    @app.delete("/objects/{object_id}", status_code=204)
+    @router.delete("/objects/{object_id}", status_code=204)
     def delete_object(object_id: str) -> Response:
         try:
             service.delete(object_id)
@@ -266,7 +286,7 @@ def create_app(manager: DatabaseManager) -> FastAPI:
             raise _not_found(exc) from exc
         return Response(status_code=204)
 
-    @app.post("/objects/{object_id}/move")
+    @router.post("/objects/{object_id}/move")
     def move_object(object_id: str, body: MoveRequest) -> dict[str, Any]:
         try:
             metadata = service.get_metadata(object_id)
@@ -289,7 +309,7 @@ def create_app(manager: DatabaseManager) -> FastAPI:
             # lost it across a restart.
             raise _not_found(exc) from exc
 
-    @app.post("/objects/{object_id}/optimize")
+    @router.post("/objects/{object_id}/optimize")
     def optimize_object(object_id: str, body: OptimizeRequest = OptimizeRequest()) -> dict[str, Any]:
         access = AccessProfile(access_frequency=body.access_frequency, mutation_frequency=body.mutation_frequency)
         try:
@@ -297,21 +317,21 @@ def create_app(manager: DatabaseManager) -> FastAPI:
         except ObjectNotFoundError as exc:
             raise _not_found(exc) from exc
 
-    @app.get("/objects/{object_id}/strategy")
+    @router.get("/objects/{object_id}/strategy")
     def explain_object(object_id: str) -> dict[str, Any]:
         try:
             return service.explain(object_id)
         except ObjectNotFoundError as exc:
             raise _not_found(exc) from exc
 
-    @app.get("/models/{model_id}")
+    @router.get("/models/{model_id}")
     def get_model_manifest(model_id: str) -> dict[str, Any]:
         try:
             return service.model_store.get_manifest(model_id).model_dump(mode="json")
         except ModelNotFoundError as exc:
             raise _not_found(exc) from exc
 
-    @app.get("/models/{model_id}/tensors/{tensor_name}")
+    @router.get("/models/{model_id}/tensors/{tensor_name}")
     def get_tensor(model_id: str, tensor_name: str) -> Response:
         try:
             data = service.model_store.retrieve_tensor(model_id, tensor_name)
@@ -319,4 +339,5 @@ def create_app(manager: DatabaseManager) -> FastAPI:
             raise _not_found(exc) from exc
         return Response(content=data, media_type="application/octet-stream")
 
+    app.include_router(router)
     return app

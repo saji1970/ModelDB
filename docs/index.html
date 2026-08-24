@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>mdc-lite — encrypted key-value store for mobile &amp; wearables</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A 345 KB embeddable encrypted key-value store for iOS, watchOS, Android, Wear OS, and desktop apps. XChaCha20-Poly1305 encryption, a 5-function C ABI, real cross-platform builds.">
+<meta name="description" content="A 348 KB embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS apps. XChaCha20-Poly1305 encryption plus DNA-encoded storage, a 5-function C ABI, real cross-platform builds.">
 <meta name="keywords" content="embedded database, encrypted key-value store, mobile database, iOS storage, Android storage, watchOS, Wear OS, Rust, XChaCha20-Poly1305, encryption, offline-first storage">
 <meta name="author" content="Saji Pillai">
 <link rel="canonical" href="https://saji1970.github.io/ModelDB/">
@@ -13,7 +13,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="mdc-lite">
 <meta property="og:title" content="mdc-lite — an encrypted store small enough to disappear into your app">
-<meta property="og:description" content="A 345 KB embeddable encrypted key-value store for iOS, watchOS, Android, Wear OS, and desktop apps. XChaCha20-Poly1305 encryption, a 5-function C ABI, real cross-platform builds.">
+<meta property="og:description" content="A 348 KB embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS apps. XChaCha20-Poly1305 encryption plus DNA-encoded storage, a 5-function C ABI, real cross-platform builds.">
 <meta property="og:url" content="https://saji1970.github.io/ModelDB/">
 <meta property="og:image" content="https://saji1970.github.io/ModelDB/og-image.png">
 <meta property="og:image:width" content="1200">
@@ -21,7 +21,7 @@
 <meta property="og:image:alt" content="mdc-lite: an encrypted store small enough to disappear into your app">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="mdc-lite — an encrypted store small enough to disappear into your app">
-<meta name="twitter:description" content="345 KB, XChaCha20-Poly1305 encryption, real cross-platform builds for iOS, watchOS, Android, Wear OS, and desktop.">
+<meta name="twitter:description" content="348 KB, XChaCha20-Poly1305 encryption plus DNA-encoded storage, real cross-platform builds for iOS, watchOS, Android, and Wear OS.">
 <meta name="twitter:image" content="https://saji1970.github.io/ModelDB/og-image.png">
 
 <script type="application/ld+json">
@@ -29,13 +29,13 @@
   "@context": "https://schema.org",
   "@type": "SoftwareSourceCode",
   "name": "mdc-lite",
-  "description": "A 345 KB embeddable encrypted key-value store for iOS, watchOS, Android, Wear OS, and desktop apps.",
+  "description": "A 348 KB embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS apps, with DNA-encoded on-disk storage.",
   "codeRepository": "https://github.com/saji1970/ModelDB/tree/main/mdc-lite",
   "programmingLanguage": "Rust",
   "license": "https://github.com/saji1970/ModelDB/blob/main/mdc-lite/LICENSE",
-  "operatingSystem": "iOS, watchOS, Android, Wear OS, Windows, macOS",
+  "operatingSystem": "iOS, watchOS, Android, Wear OS",
   "applicationCategory": "DeveloperApplication",
-  "softwareVersion": "1.1.0",
+  "softwareVersion": "1.2.0",
   "author": { "@type": "Person", "name": "Saji Pillai" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
@@ -286,7 +286,7 @@
 <div class="wrap">
 
   <section id="hero" style="border-top: none;">
-    <div class="eyebrow">v1.1.0 &nbsp;·&nbsp; <b>345 KB</b> stripped &nbsp;·&nbsp; Apache 2.0</div>
+    <div class="eyebrow">v1.2.0 &nbsp;·&nbsp; <b>348 KB</b> stripped &nbsp;·&nbsp; Apache 2.0</div>
     <h1>An encrypted store small enough to <em>disappear</em> into your app.</h1>
     <p class="lede">
       mdc-lite is a key-value store built for the places a server can't
@@ -328,13 +328,15 @@
       <tbody>
         <tr><td class="plat-name">What it is</td><td class="size-cell" data-label="mdc-lite">An embeddable library, linked into your app's binary</td><td class="size-cell" data-label="MDC Platform">A server you run and talk to</td></tr>
         <tr><td class="plat-name">Where it runs</td><td class="size-cell" data-label="mdc-lite">Inside the app itself — no network, no server</td><td class="size-cell" data-label="MDC Platform">On a machine with Python, reachable over the network</td></tr>
-        <tr><td class="plat-name">What it stores</td><td class="size-cell" data-label="mdc-lite">Raw key-value pairs — nothing else</td><td class="size-cell" data-label="MDC Platform">AI models, images, documents, database tables</td></tr>
+        <tr><td class="plat-name">What it stores</td><td class="size-cell" data-label="mdc-lite">Small generic objects — settings, credentials, cached blobs. No AI models.</td><td class="size-cell" data-label="MDC Platform">AI models, images, documents, database tables</td></tr>
+        <tr><td class="plat-name">CLI / desktop app</td><td class="size-cell" data-label="mdc-lite">None — mobile/wearable embedding only</td><td class="size-cell" data-label="MDC Platform">Yes — conversational CLI + REST API</td></tr>
         <tr><td class="plat-name">How you talk to it</td><td class="size-cell" data-label="mdc-lite">5 functions: put / get / exists / delete / list_keys</td><td class="size-cell" data-label="MDC Platform">Plain sentences — no SQL, nothing to train support staff on</td></tr>
-        <tr><td class="plat-name">Encryption</td><td class="size-cell" data-label="mdc-lite">Mandatory — every value and every key name</td><td class="size-cell" data-label="MDC Platform">None yet (an open, documented gap)</td></tr>
-        <tr><td class="plat-name">DNA-inspired encoding</td><td class="size-cell" data-label="mdc-lite">No</td><td class="size-cell" data-label="MDC Platform">Yes — an archival storage tier</td></tr>
+        <tr><td class="plat-name">Encryption</td><td class="size-cell" data-label="mdc-lite">Mandatory — every value and every key name</td><td class="size-cell" data-label="MDC Platform">Mandatory on the DNA archive tier (AES-256-GCM)</td></tr>
+        <tr><td class="plat-name">DNA-inspired encoding</td><td class="size-cell" data-label="mdc-lite">Yes — every entry is stored as an encrypted ACGT sequence</td><td class="size-cell" data-label="MDC Platform">Yes — the archive tier, same encrypt-then-encode model</td></tr>
+        <tr><td class="plat-name">External API access</td><td class="size-cell" data-label="mdc-lite">N/A — no network surface</td><td class="size-cell" data-label="MDC Platform">Bearer-token REST API for custom apps/NLU integrations</td></tr>
       </tbody>
     </table>
-    <div class="callout"><strong>Is either one's data actually stored as a DNA molecule?</strong>No. Neither product does. mdc-lite's data is ordinary encrypted files. MDC Platform's "DNA" tier encodes bytes into a string of A/C/G/T characters in a database — a software simulation, not a physical molecule. No synthesis, no sequencing, no wet lab, anywhere in either codebase.</div>
+    <div class="callout"><strong>Is either one's data actually stored as a DNA molecule?</strong>No. Both encode data as A/C/G/T <em>text</em> — mdc-lite in its on-disk files, MDC Platform in its archive tier — but it's always encrypted first, then represented as base-letter characters in an ordinary file or database. A software simulation, not a physical molecule. No synthesis, no sequencing, no wet lab, anywhere in either codebase.</div>
     <div class="cta-row" style="margin-bottom:0;">
       <a class="btn btn-ghost" href="platform.html">Explore MDC Platform →</a>
       <a class="btn btn-ghost" href="#features">Continue reading about mdc-lite ↓</a>
@@ -356,7 +358,7 @@
         <p>This library takes a 32-byte key and never generates, stores, or touches it beyond that. Real custody belongs to the platform's own secure hardware — iOS Secure Enclave / Keychain, Android Keystore / StrongBox — which is exactly where it should live.</p>
       </div>
       <div class="frow">
-        <div><span class="tag">Footprint</span><h3>345 KB, stripped, zero runtime</h3></div>
+        <div><span class="tag">Footprint</span><h3>348 KB, stripped, zero runtime</h3></div>
         <p>Built in Rust with <code>opt-level = "z"</code>, LTO, and symbols stripped. No garbage collector, no interpreter, no background thread — a handful of file reads and writes, nothing more.</p>
       </div>
       <div class="frow">
@@ -366,6 +368,10 @@
       <div class="frow">
         <div><span class="tag">Interop</span><h3>A C ABI, not a Rust-only API</h3></div>
         <p>Every operation is exposed through a five-function C header — bind it from Swift, Kotlin, or anything else that speaks C calling conventions. No wrapper generation, no FFI framework.</p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">DNA-encoded storage</span><h3>The file on disk is ACGT text, not binary</h3></div>
+        <p>Every encrypted entry is DNA-encoded (2 bits per base — <code>00→A 01→C 10→G 11→T</code>) before it's written, the same encoding <a href="platform.html#tiers">MDC Platform's archive tier</a> uses. It's ciphertext under the base letters, never plaintext — the mapping is public, encryption is what actually protects it.</p>
       </div>
     </div>
   </section>
@@ -383,37 +389,37 @@
         <tr>
           <td class="plat-name">macOS<span class="sub">Apple Silicon</span></td>
           <td class="size-cell">libmdc_lite.dylib</td>
-          <td class="size-cell">345 KB</td>
+          <td class="size-cell">348 KB</td>
           <td><span class="chip verified">tests passing</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.1.0/mdc-lite-v1.1.0-macos-arm64.dylib">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.2.0/mdc-lite-v1.2.0-macos-arm64.dylib">Download →</a></td>
         </tr>
         <tr>
           <td class="plat-name">Windows<span class="sub">x86_64, mingw-w64 ABI</span></td>
           <td class="size-cell">mdc_lite.dll</td>
-          <td class="size-cell">991 KB</td>
+          <td class="size-cell">992 KB</td>
           <td><span class="chip partial">compiled, unrun</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.1.0/mdc-lite-v1.1.0-windows-x86_64.dll">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.2.0/mdc-lite-v1.2.0-windows-x86_64.dll">Download →</a></td>
         </tr>
         <tr>
           <td class="plat-name">Android<span class="sub">arm64-v8a — real devices</span></td>
           <td class="size-cell">libmdc_lite.so</td>
-          <td class="size-cell">372 KB</td>
+          <td class="size-cell">376 KB</td>
           <td><span class="chip partial">linked, unrun</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.1.0/mdc-lite-v1.1.0-android-arm64-v8a.so">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.2.0/mdc-lite-v1.2.0-android-arm64-v8a.so">Download →</a></td>
         </tr>
         <tr>
           <td class="plat-name">Android<span class="sub">armeabi-v7a — older devices</span></td>
           <td class="size-cell">libmdc_lite.so</td>
-          <td class="size-cell">250 KB</td>
+          <td class="size-cell">252 KB</td>
           <td><span class="chip partial">linked, unrun</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.1.0/mdc-lite-v1.1.0-android-armeabi-v7a.so">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.2.0/mdc-lite-v1.2.0-android-armeabi-v7a.so">Download →</a></td>
         </tr>
         <tr>
           <td class="plat-name">Android<span class="sub">x86_64 — emulator</span></td>
           <td class="size-cell">libmdc_lite.so</td>
-          <td class="size-cell">482 KB</td>
+          <td class="size-cell">484 KB</td>
           <td><span class="chip partial">linked, unrun</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.1.0/mdc-lite-v1.1.0-android-x86_64.so">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.2.0/mdc-lite-v1.2.0-android-x86_64.so">Download →</a></td>
         </tr>
         <tr>
           <td class="plat-name">iOS / watchOS<span class="sub">requires full Xcode to build</span></td>
@@ -431,16 +437,16 @@
         </tr>
         <tr>
           <td class="plat-name">Source<span class="sub">any platform, <code>cargo build</code></span></td>
-          <td class="size-cell">mdc-lite-v1.1.0-source.tar.gz</td>
+          <td class="size-cell">mdc-lite-v1.2.0-source.tar.gz</td>
           <td class="size-cell">17 KB</td>
           <td><span class="chip source">build it yourself</span></td>
-          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.1.0/mdc-lite-v1.1.0-source.tar.gz">Download →</a></td>
+          <td><a class="dl-link" href="https://github.com/saji1970/ModelDB/releases/download/mdc-lite-v1.2.0/mdc-lite-v1.2.0-source.tar.gz">Download →</a></td>
         </tr>
       </tbody>
     </table>
     <p class="table-note">
       Every build above ships from a single tagged
-      <a href="https://github.com/saji1970/ModelDB/releases/tag/mdc-lite-v1.1.0">GitHub Release</a>
+      <a href="https://github.com/saji1970/ModelDB/releases/tag/mdc-lite-v1.2.0">GitHub Release</a>
       (checksums included) - not loose files browsed out of the repo tree.
       "Compiled, unrun" means the build succeeds and produces a
       correctly formatted binary, but couldn't be executed in the

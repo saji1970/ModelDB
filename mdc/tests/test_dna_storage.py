@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from mdc.dna.corruption import CorruptionRates, corrupt_sequence
+from mdc.dna.crypto import DecryptionError
 from mdc.dna.ecc import ECCDecodeResult, RepetitionECC
 from mdc.dna.encoder import DNADecodeError, decode, encode
 from mdc.dna.storage import DNAStorageBackend
@@ -154,6 +155,36 @@ def test_ecc_with_no_usable_copies_returns_none():
 def test_ecc_requires_odd_copy_count():
     with pytest.raises(ValueError):
         RepetitionECC(copies=2)
+
+
+# -- encryption: stored sequences are ciphertext, not plaintext, ACGT -----------
+
+def test_stored_sequence_is_not_the_plaintext_encoding():
+    backend = DNAStorageBackend(encryption_key=bytes(range(32)))
+    payload = b"anyone reading encoder.py learns the 2-bit mapping - raw ACGT must not be plaintext"
+    backend.put("b1", payload)
+    stored_sequence = backend.sequences_for("b1")[0]
+    assert decode(stored_sequence) != payload
+    assert stored_sequence != encode(payload)
+
+
+def test_wrong_key_cannot_decrypt_a_dna_block():
+    writer = DNAStorageBackend(encryption_key=bytes([1] * 32))
+    writer.put("b1", b"classified")
+    reader = DNAStorageBackend(encryption_key=bytes([2] * 32))
+    reader._sequences["b1"] = writer.sequences_for("b1")
+    with pytest.raises(DecryptionError):
+        reader.get("b1")
+
+
+def test_default_key_is_persisted_so_a_reopened_backend_can_still_decrypt(tmp_path, monkeypatch):
+    monkeypatch.delenv("MDC_DNA_KEY", raising=False)
+    monkeypatch.setattr("mdc.security.keys._DEFAULT_KEY_PATH", tmp_path / "dna.key")
+    backend_a = DNAStorageBackend()
+    backend_a.put("b1", b"still here after reopening")
+    backend_b = DNAStorageBackend()  # simulates a fresh process re-reading the same on-disk key
+    backend_b._sequences["b1"] = backend_a.sequences_for("b1")
+    assert backend_b.get("b1") == b"still here after reopening"
 
 
 # -- DNAStorageBackend: implements StorageBackend, round-trips losslessly -------

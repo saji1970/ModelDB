@@ -14,7 +14,48 @@ DEFAULT_DB_PATH = Path("data/mdc.duckdb")
 
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 db_app = typer.Typer(help="Database management commands.")
+token_app = typer.Typer(help="API bearer-token management (for custom UI/NLU integrations calling the REST API).")
 app.add_typer(db_app, name="db")
+app.add_typer(token_app, name="token")
+
+
+@token_app.command("issue")
+def token_issue(name: str = typer.Argument(..., help="A label for this token, e.g. the integration's name.")) -> None:
+    """Issue a new API bearer token and print it once - it is not
+    recoverable afterward, only the store's hash of it."""
+    from mdc.security.tokens import TokenStore
+
+    console = Console()
+    token = TokenStore().issue(name)
+    console.print(f"[bold green]{token}[/bold green]")
+    console.print(f'Store this now - it will not be shown again. Use it as: Authorization: Bearer {token}')
+
+
+@token_app.command("list")
+def token_list() -> None:
+    """List the names of every issued (unrevoked) token."""
+    from mdc.security.tokens import TokenStore
+
+    console = Console()
+    names = TokenStore().list_names()
+    if not names:
+        console.print("No tokens issued yet. Create one with `mdc token issue <name>`.")
+        return
+    for name in names:
+        console.print(f"  {name}")
+
+
+@token_app.command("revoke")
+def token_revoke(name: str = typer.Argument(..., help="The name passed to `mdc token issue` originally.")) -> None:
+    """Revoke every token issued under `name`."""
+    from mdc.security.tokens import TokenStore
+
+    console = Console()
+    removed = TokenStore().revoke(name)
+    if removed:
+        console.print(f"Revoked {removed} token(s) named {name!r}.")
+    else:
+        console.print(f"No token named {name!r} found.")
 
 
 def _open_store(database: Path, scale: str, force: bool, console: Console) -> DuckDBStore:
