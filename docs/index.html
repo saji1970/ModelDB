@@ -241,7 +241,7 @@
   .lang-block.active { display: block; }
 
   /* security */
-  .security-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .security-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
   .security-cell { background: var(--bg-raised); padding: 26px; }
   .security-cell h3 { font-size: 1.05rem; font-weight: 500; margin-bottom: 10px; }
   .security-cell p { color: var(--text-dim); margin: 0; font-size: 14.5px; }
@@ -520,6 +520,11 @@ mdc_lite_close(store)</pre></div>
         <span class="k">WHAT IT IS</span>
         <h3>256-bit symmetric, already enough</h3>
         <p>Grover's algorithm only halves a symmetric key's effective strength — 256 bits stays enormous. Quantum computers threaten asymmetric crypto (RSA/ECC) instead, which this library doesn't use at all.</p>
+      </div>
+      <div class="security-cell">
+        <span class="k">A DIFFERENT QUESTION</span>
+        <h3>Can data itself be "stored as a quantum state"?</h3>
+        <p>No — verified, not assumed. A qubit's superposition decoheres to a fixed, data-independent state in a handful of T2 lifetimes even with nobody reading it, confirmed by solving the Lindblad master equation in QuTiP against its exact analytic solution. There's no hardware today that holds a quantum state at rest the way a disk holds bits. <a href="https://github.com/saji1970/ModelDB/blob/main/DNA-STORAGE-WHITEPAPER.md#25-why-not-store-the-data-itself-as-a-quantum-state">Full derivation →</a></p>
       </div>
     </div>
   </section>

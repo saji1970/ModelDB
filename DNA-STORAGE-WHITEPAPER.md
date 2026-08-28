@@ -8,7 +8,7 @@
 
 This repository contains three independent, real implementations of a "DNA-inspired" idea: [MDC](mdc/)'s `dna/` module, which encodes arbitrary bytes into simulated DNA base sequences (A/C/G/T) with a working error-correction and corruption-simulation harness; [mdc-lite](mdc-lite/), whose on-disk format now DNA-encodes every entry the same way (`mdc-lite/src/dna.rs`), so both products share one storage model rather than two similar-but-different ones; and [MemCell](MEMCELL.md), a compression engine whose pipeline stages are explicitly modeled on biological information storage (codon tables, chromosome-style byte-plane sorting, synaptic-style pattern reuse). None perform physical DNA synthesis or sequencing; all three are software encodings that borrow DNA's *representational* ideas.
 
-This document explains that encoding honestly, and then addresses a question that keeps coming up in the same breath as "DNA storage": **what does quantum computing have to do with any of this?** The honest answer is: nothing about the encoding itself, but something real and specific about the *cryptography* protecting data meant to survive as long as DNA storage's own value proposition claims it can. We explain exactly where that connection is real, and correct the more common version of the question - "is this quantum encryption?" - which conflates two unrelated technologies.
+This document explains that encoding honestly, and then addresses two questions that keep coming up in the same breath as "DNA storage": **what does quantum computing have to do with any of this?**, and the related but distinct **could data itself be stored as a quantum state instead of classical bits?** The honest answer to the first is: nothing about the encoding itself, but something real and specific about the *cryptography* protecting data meant to survive as long as DNA storage's own value proposition claims it can - and the honest answer to the second is a firm, numerically-verified no, for physical reasons unrelated to engineering effort. We explain exactly where the cryptography connection is real, correct the more common conflation - "is this quantum encryption?" - and, separately, derive why quantum superposition can't serve as durable storage.
 
 ---
 
@@ -73,6 +73,27 @@ The practical implication for a real DNA-archival system, if it ever needs asymm
 
 The concrete, buildable takeaway for a system with DNA storage's retention horizon isn't "add quantum encryption" - it's **crypto-agility**: don't hard-code a single cryptographic algorithm into a format meant to outlive the algorithm's own security assumptions. Store an explicit algorithm identifier alongside every encrypted block (mdc-lite's on-disk format already does this implicitly - version the format, not just the bytes) so a future migration to a stronger algorithm doesn't require reinterpreting decades-old ciphertext blind. This is the same principle CLAUDE.md section 38 already states for error-correction ("the storage engine must not depend on a particular ECC algorithm") applied to cryptography instead.
 
+### 2.5 Why not store the data itself as a quantum state?
+
+A different question from everything above, and worth separating cleanly: could the *storage* itself - not just the encryption - use quantum superposition instead of classical bits? "Quantum" and "DNA-inspired" invite exactly this conflation, so it deserves a direct, verified answer rather than an intuition.
+
+**Short answer: no, not with any technology that exists or is close to existing - and the reason is physics (decoherence), not engineering effort.**
+
+We tested this rather than asserted it. Using [QuTiP](https://qutip.org/) 5.3.0's Lindblad master-equation solver (`mesolve`) - the standard tool for open-quantum-system dynamics - we prepared a qubit in its most information-dense state, an equal superposition (|0⟩+|1⟩)/√2, and let it evolve under the two decoherence channels every real qubit is subject to the instant it's left alone: energy relaxation (T1) and pure dephasing (T2). The simulation:
+
+- kept the density matrix trace-preserving (error 2×10⁻¹⁶), Hermitian (exact), and positive (a genuinely physical, completely-positive map) at every timestep;
+- matched the closed-form analytic decay laws for both population and coherence to ~10⁻⁹, confirming the solver was integrating real physics, not producing a canned curve;
+- was confirmed grid-converged (doubling the time-grid density changed the result by 2×10⁻¹⁶).
+
+The result: by five T2 lifetimes, coherence had dropped from 0.5 to 0.0034 and the excited-state population from 0.5 to 0.068 - the qubit relaxed into a fixed, data-independent classical state with no memory of the superposition it started in. Nobody measured it. The open-system dynamics erased the "data" on their own, purely from the qubit's own interaction with its environment.
+
+Two further, independent reasons stack on top of decoherence:
+
+- **Measurement destroys superposition anyway.** Even a state that survived indefinitely can't be read the way a database row can: a single-qubit measurement yields one classical bit (0 or 1), never the full superposition amplitudes, and the no-cloning theorem means there's no way to duplicate the state first to check a read against. That's the opposite of what storage needs - non-destructive, repeatable reads.
+- **No persistent "quantum disk" exists.** QRAM (quantum random-access memory) is a real, actively-researched architecture, but it exists to feed a running quantum *algorithm* with data already in superposition for that one computation - not to hold data at rest between computations the way a hard drive or SSD does. There is no quantum-storage analog of "write it, power off, come back next year, read it back."
+
+None of this is a gap in this project - MDC's DNA tier and mdc-lite both store ordinary classical bits (encrypted, then DNA-encoded), which is exactly why they work reliably. It's included here because the honest answer to "can we store data as a quantum state" is a firm no for durable storage, for reasons that would still hold even with a much bigger engineering budget.
+
 ---
 
 ## Summary
@@ -86,6 +107,7 @@ The concrete, buildable takeaway for a system with DNA storage's retention horiz
 | Physical DNA synthesis or sequencing | **Does not exist in this repository** |
 | Bearer-token authentication on MDC's REST API | **Real, implemented** - [`security/tokens.py`](mdc/src/mdc/security/tokens.py), issued via `mdc token issue` |
 | "Quantum encryption" (QKD) | **Not used, not applicable to local/archival storage** |
+| Data stored as a persistent quantum superposition instead of classical bits | **Not physically viable** - decoherence erases it in a handful of T2 lifetimes even unmeasured; verified via Lindblad master-equation simulation in QuTiP (§2.5), not assumed |
 | Quantum computers threaten this project's symmetric crypto today | **No** - Grover's algorithm leaves 256-bit keys secure |
 | Post-quantum asymmetric crypto (ML-KEM/ML-DSA) | **Not needed today** (no asymmetric crypto exists here yet); a real, honest recommendation *if* remote key exchange is ever added |
 | DNA storage's real research value | Density + archival durability - an active research hypothesis, not an established product claim (CLAUDE.md section 55) |
