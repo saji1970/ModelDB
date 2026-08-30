@@ -398,9 +398,35 @@ describe table products in database inventory</code></pre>
 
       <h3>Authenticate first — every route but the built-in UI needs a token</h3>
       <p>CORS is deliberately wide open (<code>allow_origins=["*"]</code>) so a third-party integration can call this API from a different origin without a browser rejecting the response first - that's the point of everything on this page. Open CORS was never itself a security boundary against a non-browser client though, so every route except the built-in browser UI's own HTML page requires a bearer token:</p>
-      <pre class="code-block"><code>$ mdc token issue rasa-integration
+      <pre class="code-block"><code>$ mdc token issue rasa-integration --role editor
 mdc_kP3x...   (shown once - store it now)</code></pre>
       <p>Send it as <code>Authorization: Bearer &lt;token&gt;</code> on every request. Revoke it later with <code>mdc token revoke rasa-integration</code>, or set <code>MDC_API_TOKENS</code> (comma-separated) to accept fixed tokens without the on-disk store, for CI/deployment.</p>
+      <p><code>--role</code> scopes what that specific token can do - omit it and a token defaults to <code>admin</code> (full access, matching the original all-tokens-are-equal behavior), or pick something narrower for an integration that shouldn't have it:</p>
+      <table>
+        <thead><tr><th>Role</th><th>Can do</th></tr></thead>
+        <tbody>
+          <tr><td><code>viewer</code></td><td>Read/query only - <code>GET</code> routes, <code>/find</code></td></tr>
+          <tr><td><code>editor</code></td><td>+ create tables, insert/update/delete rows, upload/replace/delete objects, use <code>/chat</code></td></tr>
+          <tr><td><code>db_admin</code></td><td>+ create brand-new databases (<code>POST /databases</code>)</td></tr>
+          <tr><td><code>admin</code></td><td>+ manage user accounts (CLI only, not exposed over the API)</td></tr>
+        </tbody>
+      </table>
+      <p>A token with an insufficient role still authenticates - a valid-but-underprivileged token gets <code>403</code>, not the <code>401</code> reserved for a missing or invalid token.</p>
+
+      <h3>User accounts and roles (CLI)</h3>
+      <p>Separately from API tokens, the CLI itself now has real accounts. The first time you run <code>mdc</code> or <code>mdc serve</code> with no user configured yet, it interactively asks for an admin username and password and creates that first account as <code>admin</code> - the same four roles as tokens, since both share one vocabulary. Manage accounts afterward with:</p>
+      <pre class="code-block"><code>$ mdc user create alice --role editor
+Password: ********
+Repeat for confirmation: ********
+Created user alice with role editor.
+
+$ mdc user list
+  admin  (admin)
+  alice  (editor)
+
+$ mdc user set-role alice db_admin
+$ mdc user delete alice</code></pre>
+      <p>Passwords are never stored in a recoverable form - <code>hashlib.scrypt</code> derives a key from the password and a random per-user salt, and only that salt and derived key are persisted (mode <code>0600</code>), the same reasoning already used for API tokens.</p>
 
       <h3>Pattern 1 — pass-through (simplest, works today, zero new code)</h3>
       <p>Forward raw user text to <code>POST /chat</code> and let MDC's own deterministic parser do the work - the same pipeline the browser chat panel and CLI already use. This is the right choice for most integrations: your system doesn't need to understand databases, models, or storage tiers at all, just detect "this is a data question" and relay the text.</p>
@@ -448,7 +474,7 @@ requests.post(
   return { reply, data };  // data is a table's rows / a search result list, when there is one
 }</code></pre>
 
-      <div class="callout"><strong>Before you deploy this reachable from anywhere but localhost</strong>A token gates every route, but this project still has no user accounts, scopes, or rate limiting - every token can do everything any caller can do. Fine for local development and internal, network-isolated use with tokens distributed by hand; put a reverse proxy with real per-user auth and rate limiting in front of it before exposing it any more broadly than that.</div>
+      <div class="callout"><strong>Before you deploy this reachable from anywhere but localhost</strong>Tokens now carry roles, and there are real user accounts for the CLI - but there's still no rate limiting, and API access control stops at "this token's role permits this route," not a per-request audit trail tied to an individual person. Fine for local development and internal, network-isolated use with tokens distributed by hand; put a reverse proxy with rate limiting in front of it before exposing it any more broadly than that.</div>
     </section>
   </main>
 </div>

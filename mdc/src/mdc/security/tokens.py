@@ -12,6 +12,14 @@ only their SHA-256 hash is ever persisted, the same reasoning as a
 password hash - a leaked token-store file doesn't hand out working
 credentials. The plaintext token exists only once, in `issue()`'s
 return value, at the moment it's created.
+
+Every token carries a `Role` (`security/roles.py`) - `issue()` defaults
+to `Role.ADMIN` so a bare `mdc token issue <name>` keeps behaving
+exactly as it did before roles existed (any valid token = full access);
+callers who want a restricted integration now pass `--role viewer` (or
+`editor`/`db_admin`) explicitly instead. A token predating this field
+(no `role` key in the JSON) is loaded as `Role.VIEWER`, the safe
+default for a record nobody can regenerate on this specific point.
 """
 
 from __future__ import annotations
@@ -22,6 +30,8 @@ import os
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
+
+from mdc.security.roles import Role
 
 _ENV_TOKENS = "MDC_API_TOKENS"  # comma-separated - for CI/deployment, bypasses the on-disk store entirely
 _DEFAULT_STORE_PATH = Path.home() / ".mdc" / "api_tokens.json"
@@ -36,6 +46,7 @@ def _hash(token: str) -> str:
 class TokenRecord:
     name: str
     token_hash: str
+    role: Role = Role.ADMIN
 
 
 class TokenStore:
@@ -51,20 +62,31 @@ class TokenStore:
         if not self.path.exists():
             return []
         data = json.loads(self.path.read_text())
-        return [TokenRecord(name=r["name"], token_hash=r["token_hash"]) for r in data]
+        # A record with no "role" key predates roles entirely - loaded as
+        # VIEWER (least privilege) rather than silently inheriting the
+        # new ADMIN default meant only for freshly-issued tokens.
+        return [
+            TokenRecord(name=r["name"], token_hash=r["token_hash"], role=Role(r["role"]) if "role" in r else Role.VIEWER)
+            for r in data
+        ]
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps([{"name": r.name, "token_hash": r.token_hash} for r in self._records], indent=2))
+        self.path.write_text(json.dumps(
+            [{"name": r.name, "token_hash": r.token_hash, "role": r.role.value} for r in self._records], indent=2,
+        ))
         self.path.chmod(0o600)
 
-    def issue(self, name: str) -> str:
+    def issue(self, name: str, role: Role = Role.ADMIN) -> str:
         """Creates a new token under `name` and returns its plaintext -
         the only time it's ever available. Names aren't unique keys;
         issuing again under the same name adds a second, independent
-        token rather than replacing the first (use `revoke` for that)."""
+        token rather than replacing the first (use `revoke` for that).
+        `role` defaults to ADMIN so existing callers/tests keep working
+        unchanged; pass an explicit lesser role for a restricted
+        integration."""
         token = _TOKEN_PREFIX + secrets.token_urlsafe(32)
-        self._records.append(TokenRecord(name=name, token_hash=_hash(token)))
+        self._records.append(TokenRecord(name=name, token_hash=_hash(token), role=role))
         self._save()
         return token
 
@@ -82,14 +104,23 @@ class TokenStore:
         return [r.name for r in self._records]
 
     def verify(self, token: str) -> bool:
-        """Re-reads the store from disk on every call, deliberately not
+        """True if `token` is currently valid, regardless of role."""
+        return self.resolve(token) is not None
+
+    def resolve(self, token: str) -> TokenRecord | None:
+        """Returns the matching `TokenRecord` (so callers can check its
+        role) or `None` if the token is missing/unknown/revoked.
+        Re-reads the store from disk on every call, deliberately not
         relying on `self._records` - a long-running `mdc serve` process
         must recognize a token issued by a separate, later `mdc token
         issue` invocation without needing a restart."""
         if not token:
-            return False
+            return None
         env_tokens = os.environ.get(_ENV_TOKENS)
         if env_tokens and token in {t.strip() for t in env_tokens.split(",") if t.strip()}:
-            return True
+            # Operator-configured deployment/CI credential, not something
+            # an end-user token-holder gets by default - treated as fully
+            # trusted, the same as whoever set the env var already is.
+            return TokenRecord(name="env", token_hash=_hash(token), role=Role.ADMIN)
         digest = _hash(token)
-        return any(r.token_hash == digest for r in self._load())
+        return next((r for r in self._load() if r.token_hash == digest), None)

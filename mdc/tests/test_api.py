@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from mdc.api.app import create_app
 from mdc.databases.manager import DatabaseManager
 from mdc.schema.loader import load_default_registry
+from mdc.security.roles import Role
 from mdc.security.tokens import TokenStore
 from mdc.storage.duckdb_store import DuckDBStore
 
@@ -559,3 +560,72 @@ def test_concurrent_metadata_and_strategy_requests_agree(client: TestClient):
         codes = [f.result() for f in futures]
 
     assert all(code == 200 for code in codes)
+
+
+# -- role-based authorization: a valid token can still lack permission -----------
+
+def _client_with_role(tmp_path: Path, role: Role) -> TestClient:
+    store = DuckDBStore(tmp_path / "mdc.duckdb")
+    store.init_schema()
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    token_store = TokenStore(tmp_path / "api_tokens.json")
+    token = token_store.issue("scoped-client", role=role)
+    test_client = TestClient(create_app(manager, token_store=token_store))
+    test_client.headers.update({"Authorization": f"Bearer {token}"})
+    return test_client
+
+
+def test_viewer_token_can_read(tmp_path: Path):
+    viewer = _client_with_role(tmp_path, Role.VIEWER)
+    assert viewer.get("/databases").status_code == 200
+    assert viewer.get("/objects").status_code == 200
+
+
+def test_viewer_token_cannot_create_a_database(tmp_path: Path):
+    viewer = _client_with_role(tmp_path, Role.VIEWER)
+    response = viewer.post("/databases", json={"name": "viewer-attempt"})
+    assert response.status_code == 403
+    assert "create_database" in response.json()["detail"]
+
+
+def test_viewer_token_cannot_upload_an_object(tmp_path: Path):
+    viewer = _client_with_role(tmp_path, Role.VIEWER)
+    response = viewer.post("/objects?filename=a.txt", content=b"hello")
+    assert response.status_code == 403
+
+
+def test_viewer_token_cannot_use_chat(tmp_path: Path):
+    viewer = _client_with_role(tmp_path, Role.VIEWER)
+    response = viewer.post("/chat", json={"message": "list objects"})
+    assert response.status_code == 403
+
+
+def test_editor_token_can_write_but_not_create_a_database(tmp_path: Path):
+    editor = _client_with_role(tmp_path, Role.EDITOR)
+    assert editor.post("/objects?filename=a.txt", content=b"hello").status_code == 201
+    assert editor.post("/databases", json={"name": "editor-attempt"}).status_code == 403
+
+
+def test_db_admin_token_can_create_a_database(tmp_path: Path):
+    db_admin = _client_with_role(tmp_path, Role.DB_ADMIN)
+    response = db_admin.post("/databases", json={"name": "db-admin-created"})
+    assert response.status_code == 201
+
+
+def test_admin_token_can_do_everything_a_lesser_role_cannot(tmp_path: Path):
+    admin = _client_with_role(tmp_path, Role.ADMIN)
+    assert admin.post("/databases", json={"name": "admin-created"}).status_code == 201
+    assert admin.post("/objects?filename=a.txt", content=b"hello").status_code == 201
+    assert admin.post("/chat", json={"message": "list objects"}).status_code == 200
+
+
+def test_a_403_still_requires_a_valid_token_first(tmp_path: Path):
+    # An invalid token must 401, never leak into a 403 that would imply
+    # "your token is real but underprivileged" for a token that isn't
+    # real at all.
+    store = DuckDBStore(tmp_path / "mdc.duckdb")
+    store.init_schema()
+    manager = DatabaseManager(tmp_path / "databases", store, load_default_registry())
+    bare_client = TestClient(create_app(manager, token_store=TokenStore(tmp_path / "api_tokens.json")))
+    response = bare_client.post("/databases", json={"name": "x"}, headers={"Authorization": "Bearer not-a-real-token"})
+    assert response.status_code == 401
