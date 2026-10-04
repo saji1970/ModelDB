@@ -1,8 +1,9 @@
 """Starts the MDC server in a container (Railway, Docker): the same app `python -m mdc serve` runs, without
 its interactive first-run prompt, listening on every address (Railway's private network is
 IPv6) and with a /healthz route for Railway's health check. AgentBuilder authenticates with the
-token in MDC_API_TOKENS."""
+token in MDC_API_TOKENS (made and kept on the volume when that is not set)."""
 import os
+import secrets
 import socket
 from pathlib import Path
 
@@ -13,18 +14,34 @@ from mdc.databases.manager import DatabaseManager
 from mdc.schema.loader import load_default_registry
 from mdc.storage.duckdb_store import DuckDBStore
 
-# The token callers present. MODELDB_TOKEN is accepted too, the name AgentBuilder's services use.
-if not os.environ.get("MDC_API_TOKENS") and os.environ.get("MODELDB_TOKEN"):
-    os.environ["MDC_API_TOKENS"] = os.environ["MODELDB_TOKEN"]
-if not os.environ.get("MDC_API_TOKENS"):
-    raise SystemExit(
-        "ModelDB needs an API token and none is set, so it will not start.\n"
-        "  On this service add the variable MDC_API_TOKENS = a long random value\n"
-        "  (for example the output of: openssl rand -base64 32).\n"
-        "  Services that use ModelDB present that token; on Railway give the Studio and Runtime\n"
-        "  MODELDB_TOKEN = ${{ModelDB.MDC_API_TOKENS}} and\n"
-        "  MODELDB_URL = http://${{ModelDB.RAILWAY_PRIVATE_DOMAIN}}:8000"
+# The token callers present: MDC_API_TOKENS, or MODELDB_TOKEN (the name AgentBuilder's services
+# use). With neither set, ModelDB still starts: it makes a token once, keeps it on the volume
+# (next to the database) and prints it, so a missing variable can't stop the service.
+def _token() -> str:
+    for name in ("MDC_API_TOKENS", "MODELDB_TOKEN"):
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            print(f"ModelDB: using the API token from {name}.", flush=True)
+            return value
+    saved = Path(os.environ.get("MODELDB_TOKEN_FILE", "/data/modeldb-api-token"))
+    if saved.exists() and saved.read_text().strip():
+        token, made = saved.read_text().strip(), False
+    else:
+        token, made = "mdb_" + secrets.token_urlsafe(32), True
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        saved.write_text(token + "\n")
+        saved.chmod(0o600)
+    print(
+        f"ModelDB: no MDC_API_TOKENS variable is set, so it uses the token {'it just made and saved' if made else 'saved'} in {saved}:\n"
+        f"    {token}\n"
+        "  Give that value to the services that use ModelDB (on Railway: MODELDB_TOKEN on the Studio\n"
+        "  and Runtime). To choose the token yourself instead, set MDC_API_TOKENS on this service.",
+        flush=True,
     )
+    return token
+
+
+os.environ["MDC_API_TOKENS"] = _token()
 database = Path(os.environ.get("MODELDB_DATABASE", "/data/mdc.duckdb"))
 database.parent.mkdir(parents=True, exist_ok=True)
 store = DuckDBStore(database)
