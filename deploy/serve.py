@@ -8,7 +8,7 @@ import socket
 from pathlib import Path
 
 import uvicorn
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 import mdc.api.app
 
@@ -78,6 +78,11 @@ def explorer() -> HTMLResponse:
     if "__MDC_LOCAL_UI_TOKEN__" in html:  # never serve the page if it would still carry a token slot
         return HTMLResponse("The Storage Explorer page changed shape; use the API with a token.", status_code=503)
     return HTMLResponse(html)
+
+
+@app.get("/admin", include_in_schema=False)
+def admin() -> RedirectResponse:
+    return RedirectResponse("/")
 
 
 @app.get("/healthz")
