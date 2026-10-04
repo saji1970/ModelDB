@@ -13,8 +13,18 @@ from mdc.databases.manager import DatabaseManager
 from mdc.schema.loader import load_default_registry
 from mdc.storage.duckdb_store import DuckDBStore
 
+# The token callers present. MODELDB_TOKEN is accepted too, the name AgentBuilder's services use.
+if not os.environ.get("MDC_API_TOKENS") and os.environ.get("MODELDB_TOKEN"):
+    os.environ["MDC_API_TOKENS"] = os.environ["MODELDB_TOKEN"]
 if not os.environ.get("MDC_API_TOKENS"):
-    raise SystemExit("Set MDC_API_TOKENS to the token AgentBuilder uses (MODELDB_TOKEN on the Studio and Runtime)")
+    raise SystemExit(
+        "ModelDB needs an API token and none is set, so it will not start.\n"
+        "  On this service add the variable MDC_API_TOKENS = a long random value\n"
+        "  (for example the output of: openssl rand -base64 32).\n"
+        "  Services that use ModelDB present that token; on Railway give the Studio and Runtime\n"
+        "  MODELDB_TOKEN = ${{ModelDB.MDC_API_TOKENS}} and\n"
+        "  MODELDB_URL = http://${{ModelDB.RAILWAY_PRIVATE_DOMAIN}}:8000"
+    )
 database = Path(os.environ.get("MODELDB_DATABASE", "/data/mdc.duckdb"))
 database.parent.mkdir(parents=True, exist_ok=True)
 store = DuckDBStore(database)
