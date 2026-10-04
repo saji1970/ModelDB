@@ -95,4 +95,17 @@ def _ipv6() -> bool:
         return False
 
 
-uvicorn.run(app, host=os.environ.get("HOST") or ("::" if _ipv6() else "0.0.0.0"), port=int(os.environ.get("PORT", "8000")))
+# Listens on PORT (Railway sets it, often 8080) and also on 8000, the port the other services
+# and a public domain's default target use, so a mismatch between the two can't make it unreachable.
+host = os.environ.get("HOST") or ("::" if _ipv6() else "0.0.0.0")
+ports = sorted({int(os.environ.get("PORT") or 8000), 8000})
+sockets = []
+for port in ports:
+    s = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if ":" in host:
+        s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+    s.bind((host, port))
+    sockets.append(s)
+print(f"ModelDB: listening on port {' and '.join(map(str, ports))}.", flush=True)
+uvicorn.Server(uvicorn.Config(app)).run(sockets=sockets)
