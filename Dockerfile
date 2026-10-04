@@ -1,6 +1,7 @@
 # MDC (the ModelDB server) as a container: its Universal Object API and Storage Explorer,
 # with the DuckDB database on a volume at /data. Railway builds this (railway.json); anywhere
 # else: docker build -t modeldb . && docker run -p 8000:8000 -v modeldb:/data -e MDC_API_TOKENS=... modeldb
+# (without MDC_API_TOKENS it makes a token, keeps it in /data/modeldb-api-token and prints it)
 FROM python:3.12-slim
 WORKDIR /app
 COPY mdc/requirements.txt mdc/requirements.txt
