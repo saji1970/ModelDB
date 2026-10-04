@@ -1,0 +1,11 @@
+.git
+build
+src
+include
+tests
+mdc-lite
+docs
+mdc/tests
+mdc/.claude
+**/__pycache__
+*.duckdb
