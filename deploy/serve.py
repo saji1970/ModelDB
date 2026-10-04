@@ -45,6 +45,13 @@ def _token() -> str:
 
 
 os.environ["MDC_API_TOKENS"] = _token()
+_data = Path(os.environ.get("MODELDB_DATABASE", "/data/mdc.duckdb")).parent
+if str(_data) == "/data" and not os.path.ismount("/data"):
+    print(
+        "ModelDB: WARNING /data is not a volume, so the database (and a token made here) is lost on\n"
+        "  every redeploy. On Railway: right-click the ModelDB service -> Attach volume, mount path /data.",
+        flush=True,
+    )
 database = Path(os.environ.get("MODELDB_DATABASE", "/data/mdc.duckdb"))
 database.parent.mkdir(parents=True, exist_ok=True)
 store = DuckDBStore(database)
@@ -58,13 +65,17 @@ app = create_app(DatabaseManager(database.parent / "databases", store, load_defa
 _SIGN_IN = """const token = (() => {
       let t = sessionStorage.getItem("modeldb-token");
       if (!t) {
-        t = (prompt("ModelDB API token (MDC_API_TOKENS on the ModelDB service, or the token printed in its deploy logs)") || "").trim();
+        const refused = sessionStorage.getItem("modeldb-refused");
+        sessionStorage.removeItem("modeldb-refused");
+        t = (prompt((refused ? "ModelDB refused that token. " : "") + "Paste the ModelDB API token: the MDC_API_TOKENS variable on the ModelDB service, or the mdb_ token printed in its latest deploy log.") || "").trim();
         if (t) sessionStorage.setItem("modeldb-token", t);
       }
       return t;
     })();"""
 _SIGN_OUT_ON_401 = """return originalFetch(input, { ...init, headers }).then((r) => {
-        if (r.status === 401) { sessionStorage.removeItem("modeldb-token"); location.reload(); }
+        if (r.status === 401 && sessionStorage.getItem("modeldb-token")) {
+          sessionStorage.removeItem("modeldb-token"); sessionStorage.setItem("modeldb-refused", "1"); location.reload();
+        }
         return r;
       });"""
 app.router.routes[:] = [r for r in app.router.routes if getattr(r, "path", None) != "/"]
