@@ -8,6 +8,9 @@ import socket
 from pathlib import Path
 
 import uvicorn
+from fastapi.responses import HTMLResponse
+
+import mdc.api.app
 
 from mdc.api.app import create_app
 from mdc.databases.manager import DatabaseManager
@@ -47,6 +50,34 @@ database.parent.mkdir(parents=True, exist_ok=True)
 store = DuckDBStore(database)
 store.init_schema()
 app = create_app(DatabaseManager(database.parent / "databases", store, load_default_registry()))
+
+
+# The Storage Explorer at "/". MDC's own page has an admin token written into it, which is right
+# for `mdc serve` on your own computer but would hand the whole database to anyone who opens a
+# public domain. Here the page asks for the API token instead and keeps it for the browser tab.
+_SIGN_IN = """const token = (() => {
+      let t = sessionStorage.getItem("modeldb-token");
+      if (!t) {
+        t = (prompt("ModelDB API token (MDC_API_TOKENS on the ModelDB service, or the token printed in its deploy logs)") || "").trim();
+        if (t) sessionStorage.setItem("modeldb-token", t);
+      }
+      return t;
+    })();"""
+_SIGN_OUT_ON_401 = """return originalFetch(input, { ...init, headers }).then((r) => {
+        if (r.status === 401) { sessionStorage.removeItem("modeldb-token"); location.reload(); }
+        return r;
+      });"""
+app.router.routes[:] = [r for r in app.router.routes if getattr(r, "path", None) != "/"]
+
+
+@app.get("/", response_class=HTMLResponse)
+def explorer() -> HTMLResponse:
+    html = (Path(mdc.api.app.__file__).parent / "static" / "index.html").read_text()
+    html = html.replace('const token = "__MDC_LOCAL_UI_TOKEN__";', _SIGN_IN)
+    html = html.replace("return originalFetch(input, { ...init, headers });", _SIGN_OUT_ON_401)
+    if "__MDC_LOCAL_UI_TOKEN__" in html:  # never serve the page if it would still carry a token slot
+        return HTMLResponse("The Storage Explorer page changed shape; use the API with a token.", status_code=503)
+    return HTMLResponse(html)
 
 
 @app.get("/healthz")
