@@ -23,3 +23,14 @@ class DatabaseNotFoundError(DatabaseError):
     def __init__(self, name: str):
         super().__init__(f"No database named {name!r}.")
         self.name = name
+
+
+class CannotDropDefaultDatabaseError(DatabaseError):
+    def __init__(self):
+        super().__init__('The "default" database always exists (it holds the built-in merchants table) and cannot be dropped.')
+
+
+class ProtectedTableError(DatabaseError):
+    def __init__(self, table: str):
+        super().__init__(f'"{table}" is a built-in table of the default database and cannot be dropped.')
+        self.table = table

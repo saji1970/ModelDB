@@ -38,12 +38,25 @@ class PendingSchema:
 
 
 @dataclass
+class PendingDrop:
+    """A permanent deletion waiting for confirmation - nothing is deleted on
+    the turn it is asked for. Confirming takes "yes", except for a whole
+    database, where the user has to type its name."""
+
+    kind: str  # "database" | "table" | "stream" | "row"
+    database: str
+    name: str  # the database, table or stream; for a row, its table
+    record_id: str | None = None
+
+
+@dataclass
 class StorageConversationState:
     session_id: str = "default"
     last_object_id: str | None = None
     pending_delete: str | None = None
     current_database: str = DEFAULT_DATABASE
     pending_schema: PendingSchema | None = None
+    pending_drop: PendingDrop | None = None
     # The role of whoever is sending this turn - set by the HTTP chat from the
     # caller's token. None (the CLI, tests) means no restriction.
     role: "Role | None" = None
@@ -52,4 +65,5 @@ class StorageConversationState:
         self.last_object_id = None
         self.pending_delete = None
         self.pending_schema = None
+        self.pending_drop = None
         self.current_database = DEFAULT_DATABASE

@@ -36,9 +36,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mdc.api.service import ObjectService
-from mdc.databases.errors import DatabaseAlreadyExistsError, DatabaseNotFoundError, InvalidDatabaseNameError
+from mdc.databases.errors import (
+    CannotDropDefaultDatabaseError,
+    DatabaseAlreadyExistsError,
+    DatabaseNotFoundError,
+    InvalidDatabaseNameError,
+    ProtectedTableError,
+)
 from mdc.engine.data_engine import MDCDataEngine
 from mdc.events import EventStore
+from mdc.events.store import list_streams_in
 from mdc.schema.registry import SchemaRegistry
 from mdc.security.keys import load_or_create_dna_key
 from mdc.storage.duckdb_store import DuckDBStore
@@ -123,6 +130,48 @@ class DatabaseManager:
         handle = _build_handle(name, store, registry)
         self._handles[name] = handle
         return handle
+
+    def summarize(self, name: str) -> dict:
+        """What a database holds - used to tell someone exactly what dropping
+        it would destroy: {"tables": {name: rows}, "rows", "objects", "streams"}."""
+        handle = self.get(name)
+        tables = {t: handle.engine.count_records(t) for t in handle.schema_registry.list_collections()}
+        return {
+            "tables": tables,
+            "rows": sum(tables.values()),
+            "objects": len(handle.object_service.list_objects()),
+            "streams": len(list_streams_in(handle.store)),
+        }
+
+    def drop(self, name: str) -> dict:
+        """Permanently delete a database: its tables, rows, objects, streams
+        and files. Returns what it held. The default database is refused."""
+        if name == DEFAULT_DATABASE:
+            raise CannotDropDefaultDatabaseError()
+        if not self.exists(name):
+            raise DatabaseNotFoundError(name)
+        held = self.summarize(name)
+        handle = self.get(name)
+        handle.store.close()
+        self._handles.pop(name, None)
+        self._event_stores.pop(name, None)
+        for path in (self._path_for(name), Path(f"{self._path_for(name)}.wal"), self._schema_path_for(name)):
+            path.unlink(missing_ok=True)
+        return held
+
+    @staticmethod
+    def is_protected_table(name: str, table: str) -> bool:
+        return name == DEFAULT_DATABASE and table == "merchants"
+
+    def drop_table(self, name: str, table: str) -> int:
+        """Permanently delete a table and all its rows; returns the row count.
+        The built-in merchants table of the default database is refused."""
+        if self.is_protected_table(name, table):
+            raise ProtectedTableError(table)
+        handle = self.get(name)
+        removed = handle.engine.drop_collection(table)
+        self.persist_schema(name)
+        return removed
 
     def events(self, name: str) -> EventStore:
         """The event-sourced streams of database `name` - one EventStore per

@@ -205,6 +205,7 @@
       <a href="#find">Universal search</a>
       <a href="#import-export">Import, export &amp; design</a>
       <a href="#streams">Agent state streams</a>
+      <a href="#deleting">Deleting things</a>
     </div>
     <div class="grp">
       <div class="grp-label">Reference</div>
@@ -464,6 +465,32 @@ Create it? Reply yes to create it - anything else drops it.</span>
       <p>Also: one writing process per database (a second writer is caught and refused, not merged); recorded times never run backwards (back-filling with <code>at</code> is allowed, rewriting the past is not); one record may be at most 1&nbsp;MB; master-key rotation is not implemented.</p>
     </section>
 
+    <section id="deleting">
+      <h2>Deleting things</h2>
+      <p>Every deletion here is permanent - there is no recycle bin - so nothing is removed on the first request. In chat, MDC says exactly what would be lost and waits. Over REST, the dangerous ones must repeat the name as <code>?confirm=</code>.</p>
+      <table>
+        <tr><th>To delete</th><th>In chat</th><th>Over REST</th><th>Needs</th></tr>
+        <tr><td>A database and everything in it</td><td><code>drop database sales</code> - then <strong>type its name</strong> to confirm</td><td><code>DELETE /databases/{name}?confirm={name}</code></td><td><code>drop</code></td></tr>
+        <tr><td>A table and its rows</td><td><code>drop table orders</code> (or <code>... in database shop</code>) - then <code>yes</code></td><td><code>DELETE /databases/{name}/tables/{table}?confirm={table}</code></td><td><code>drop</code></td></tr>
+        <tr><td>One row</td><td><code>delete row &lt;record_id&gt; from table orders</code> - then <code>yes</code></td><td><code>DELETE /databases/{name}/tables/{table}/rows/{record_id}</code></td><td><code>write</code></td></tr>
+        <tr><td>A stream's whole history</td><td><code>delete stream agent-1</code> - then <code>yes</code></td><td><code>DELETE /databases/{name}/streams/{stream}</code></td><td><code>drop</code></td></tr>
+        <tr><td>An object (model, image, document)</td><td><code>delete &lt;object_id&gt;</code> - then <code>yes</code></td><td><code>DELETE /objects/{id}</code></td><td><code>write</code></td></tr>
+      </table>
+      <div class="transcript"><span class="prompt">&gt; drop database shop</span>
+<span class="reply">This permanently deletes database "shop" and everything in it: 2 table(s) holding 4 row(s), 1 object(s), 1 stream(s). This cannot be undone.
+To confirm, type the database name (shop). Anything else cancels.</span>
+
+<span class="prompt">&gt; shop</span>
+<span class="reply">Deleted database "shop" (2 table(s), 4 row(s), 1 object(s), 1 stream(s)). You are back in "default".</span></div>
+      <p>The REST reply to an unconfirmed request is a <code>422</code> that states the counts, so a script or a person sees what the call would destroy before repeating it.</p>
+      <ul>
+        <li><strong>Anything other than the confirmation cancels</strong> - "no", a different request, even an empty message - so a stray "yes" later deletes nothing.</li>
+        <li><strong>Protected:</strong> the <code>default</code> database, and its built-in <code>merchants</code> table, cannot be dropped.</li>
+        <li><strong>Roles:</strong> dropping needs the new <code>drop</code> permission, held by <code>db_admin</code> and <code>admin</code> only; an <code>editor</code> can still delete rows and objects. Chat checks it when you ask and again when you confirm.</li>
+        <li>If someone else is working in a database that gets dropped, their next message says so and moves them back to <code>default</code>.</li>
+      </ul>
+    </section>
+
     <section id="rest-api">
       <h2>REST API reference</h2>
       <p style="color:var(--text-dim); font-size:14.5px;">Every route below requires <code>Authorization: Bearer &lt;token&gt;</code> - see <a href="#integrations">Connect your own NLU or UI</a> for how to issue one.</p>
@@ -483,6 +510,7 @@ Create it? Reply yes to create it - anything else drops it.</span>
         <tr><td><code>GET /find</code></td><td>Structured universal search - <code>?q=&amp;min=&amp;max=&amp;database=&amp;table=</code></td></tr>
         <tr><td><code>GET /databases/{name}/export</code></td><td>Download a database - <code>?format=csv|sql|xlsx|md|er|dnadb&amp;scope=schema|data|all&amp;table=</code></td></tr>
         <tr><td><code>POST /databases/import</code></td><td>Create a database or tables from an uploaded file (raw body, <code>?filename=</code> picks the format, optional <code>&amp;database=</code>)</td></tr>
+        <tr><td><code>DELETE /databases/{name}?confirm=</code> &middot; <code>DELETE .../tables/{table}?confirm=</code> &middot; <code>DELETE .../rows/{record_id}</code></td><td>Delete a database, a table, or one row - see <a href="#deleting">Deleting things</a></td></tr>
         <tr><td><code>/databases/{name}/streams/...</code></td><td>Event-sourced agent state: create, append, rebuild as of a time, history - see <a href="#streams">Agent state streams</a></td></tr>
         <tr><td><code>POST /chat</code></td><td>The same conversational layer the CLI and browser chat panel use</td></tr>
         <tr><td><code>POST /chat/attach</code></td><td>The chat window's paperclip: like import, but a CSV lands in the chat session's current database</td></tr>
@@ -499,6 +527,7 @@ Create it? Reply yes to create it - anything else drops it.</span>
         <tr><td><code>export database as csv|sql|excel|markdown</code>, <code>export schema as er diagram</code>, <code>export database with data</code></td><td>Download a database - see <a href="#import-export">Import, export &amp; design</a></td></tr>
         <tr><td><code>create database shop with customers(name, email), orders(total decimal)</code>, or a pasted <code>erDiagram</code></td><td>Propose a schema, then create it on <code>yes</code></td></tr>
         <tr><td><code>create stream agent-1 with mood=calm</code>, <code>update stream agent-1 set mood=busy</code>, <code>show stream agent-1 as of 15 minutes ago</code></td><td>Event-sourced agent state - see <a href="#streams">Agent state streams</a></td></tr>
+        <tr><td><code>drop database &lt;name&gt;</code>, <code>drop table &lt;name&gt;</code>, <code>delete row &lt;id&gt; from table &lt;t&gt;</code>, <code>delete stream &lt;id&gt;</code></td><td>Permanently delete - asks for confirmation first, see <a href="#deleting">Deleting things</a></td></tr>
         <tr><td><code>cancel</code>, <code>never mind</code>, <code>/reset</code></td><td>Drop whatever question or proposal the chat is waiting on</td></tr>
         <tr><td><code>Show all merchants</code>, <code>Create a merchant called ...</code></td><td>Merchants CRUD/analytics (a separate, earlier conversational domain - see the platform README for why)</td></tr>
       </table>
@@ -520,7 +549,7 @@ mdc_kP3x...   (shown once - store it now)</code></pre>
         <tbody>
           <tr><td><code>viewer</code></td><td>Read/query only - <code>GET</code> routes, <code>/find</code></td></tr>
           <tr><td><code>editor</code></td><td>+ create tables, insert/update/delete rows, upload/replace/delete objects, use <code>/chat</code></td></tr>
-          <tr><td><code>db_admin</code></td><td>+ create brand-new databases (<code>POST /databases</code>)</td></tr>
+          <tr><td><code>db_admin</code></td><td>+ create brand-new databases (<code>POST /databases</code>) and <code>drop</code>: permanently delete a table, a database or a stream (<a href="#deleting">Deleting things</a>)</td></tr>
           <tr><td><code>admin</code></td><td>+ manage user accounts (CLI only, not exposed over the API)</td></tr>
         </tbody>
       </table>

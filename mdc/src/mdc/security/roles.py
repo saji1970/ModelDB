@@ -14,8 +14,10 @@ database, not a generic READ/WRITE/ADMIN triad:
     EDITOR   - VIEWER + create tables and write rows in existing
                databases, cannot create or drop a whole database
     DB_ADMIN - EDITOR + create databases (CLAUDE.md's own example of
-               an "adding Database" capability), still not the same as
-               ADMIN
+               an "adding Database" capability) and DROP: permanently
+               delete a table, a database, or a stream. Deleting a single
+               row or object is ordinary WRITE; destroying structure and
+               everything in it is not. Still not the same as ADMIN
     ADMIN    - DB_ADMIN + manage other users' accounts and roles
 
 Permissions, not roles, are what call sites check - `ROLE_PERMISSIONS`
@@ -34,6 +36,7 @@ class Permission(str, Enum):
     CREATE_TABLE = "create_table"       # add a table/collection to an existing database
     CREATE_DATABASE = "create_database"  # create a brand-new database
     MANAGE_USERS = "manage_users"       # create/delete user accounts, change roles, issue tokens for others
+    DROP = "drop"                       # permanently delete a table, a whole database, or a stream's history
 
 
 class Role(str, Enum):
@@ -46,10 +49,10 @@ class Role(str, Enum):
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     Role.VIEWER: frozenset({Permission.READ}),
     Role.EDITOR: frozenset({Permission.READ, Permission.WRITE, Permission.CREATE_TABLE}),
-    Role.DB_ADMIN: frozenset({Permission.READ, Permission.WRITE, Permission.CREATE_TABLE, Permission.CREATE_DATABASE}),
+    Role.DB_ADMIN: frozenset({Permission.READ, Permission.WRITE, Permission.CREATE_TABLE, Permission.CREATE_DATABASE, Permission.DROP}),
     Role.ADMIN: frozenset({
         Permission.READ, Permission.WRITE, Permission.CREATE_TABLE,
-        Permission.CREATE_DATABASE, Permission.MANAGE_USERS,
+        Permission.CREATE_DATABASE, Permission.DROP, Permission.MANAGE_USERS,
     }),
 }
 

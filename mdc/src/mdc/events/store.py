@@ -124,6 +124,16 @@ def _canonical(value: Any, what: str, max_bytes: int) -> Any:
     return json.loads(text)
 
 
+def list_streams_in(storage: StorageBackend) -> list[dict[str, Any]]:
+    """The streams a storage backend holds, from block ids alone - no key needed."""
+    counts: dict[str, int] = {}
+    for block_id in storage.search(kind="event"):
+        if block_id.startswith(_EVENT_PREFIX):
+            stream = _stream_of(block_id)
+            counts[stream] = max(counts.get(stream, 0), _seq_of(block_id))
+    return [{"stream": s, "events": counts[s]} for s in sorted(counts)]
+
+
 class EventStore:
     def __init__(
         self,
@@ -248,12 +258,7 @@ class EventStore:
     def list_streams(self) -> list[dict[str, Any]]:
         """Stream ids and how many events each has - read from the block ids
         alone, so nothing is decrypted."""
-        counts: dict[str, int] = {}
-        for block_id in self._storage.search(kind="event"):
-            if block_id.startswith(_EVENT_PREFIX):
-                stream = _stream_of(block_id)
-                counts[stream] = max(counts.get(stream, 0), _seq_of(block_id))
-        return [{"stream": s, "events": counts[s]} for s in sorted(counts)]
+        return list_streams_in(self._storage)
 
     def exists(self, stream: str) -> bool:
         self._check_id(stream)
