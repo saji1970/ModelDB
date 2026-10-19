@@ -44,6 +44,11 @@ class MDCOperation(BaseModel):
 class CreateOperation(MDCOperation):
     kind: Literal["CREATE"] = "CREATE"
     data: dict[str, Any]
+    # Only an import sets this (portability/): it keeps a row's identity
+    # when a database is moved to another instance. Nothing that accepts
+    # untrusted request bodies exposes it - REST row insertion and chat
+    # build CreateOperation with `data` alone, so ids stay server-made.
+    record_id: str | None = None
 
 
 class ReadOperation(MDCOperation):

@@ -62,6 +62,9 @@ class DatabaseIntent:
     SHOW_DATA = "SHOW_DATA"
     INSERT = "INSERT"
     FIND = "FIND"
+    EXPORT = "EXPORT"
+    TRANSFER_HELP = "TRANSFER_HELP"
+    DESIGN_SCHEMA = "DESIGN_SCHEMA"
 
 
 @dataclass(frozen=True)
@@ -74,6 +77,10 @@ class DatabaseCommand:
     search_term: str | None = None
     min_value: float | None = None
     max_value: float | None = None
+    export_format: str | None = None
+    export_scope: str | None = None
+    design_plan: Any = None  # an ImportPlan proposed by a prompt / ER diagram
+    design_error: str | None = None
     raw_text: str = ""
 
 
@@ -212,6 +219,85 @@ def _find(m: re.Match, raw: str) -> DatabaseCommand | None:
     )
 
 
+_EXPORT_FORMAT_WORDS = {
+    "csv": "csv", "sql": "sql", "script": "sql", "xlsx": "xlsx", "xls": "xlsx", "excel": "xlsx", "spreadsheet": "xlsx",
+    "md": "md", "markdown": "md", "er": "er", "erd": "er", "diagram": "er", "mermaid": "er",
+    "json": "dnadb", "dnadb": "dnadb", "dump": "dnadb", "backup": "dnadb",
+}
+_STRUCTURE_WORDS = {"schema", "structure", "design", "ddl"}
+_EVERYTHING_WORDS = {"everything", "all", "full", "complete", "backup", "dump"}
+_NOT_A_NAME = (
+    {"as", "to", "in", "with", "and", "only", "the", "a", "an", "of", "for", "into", "my", "me", "please", "file", "document",
+     "doc", "data", "rows", "records", "table", "database", "db", "export", "download"}
+    | set(_EXPORT_FORMAT_WORDS) | _STRUCTURE_WORDS | _EVERYTHING_WORDS
+)
+
+
+def _name_after(tokens: list[str], lowered: list[str], *keywords: str) -> str | None:
+    for i, word in enumerate(lowered[:-1]):
+        if word in keywords and lowered[i + 1] not in _NOT_A_NAME:
+            return tokens[i + 1]
+    return None
+
+
+def _export(m: re.Match, raw: str) -> DatabaseCommand | None:
+    """`export` / `download` plus any of: a format (csv, sql, excel, markdown,
+    er diagram, ...), a scope (schema/structure, data, everything), `table
+    <name>`, `database <name>`. Needs at least one of those so a stray
+    "download" in some other sentence is never taken for an export."""
+    tokens = re.findall(r"[A-Za-z0-9_.-]+", m.group(1))
+    lowered = [t.lower() for t in tokens]
+    fmt = next((_EXPORT_FORMAT_WORDS[w] for w in lowered if w in _EXPORT_FORMAT_WORDS), None)
+    if fmt is None and "design" in lowered:
+        fmt = "md"
+    structure = any(w in _STRUCTURE_WORDS for w in lowered)
+    data = any(w in ("data", "rows", "records") for w in lowered)
+    everything = any(w in _EVERYTHING_WORDS for w in lowered)
+    # "export the database WITH data" means the whole thing, structure included.
+    everything = everything or any(a == "with" and b in ("data", "rows", "records") for a, b in zip(lowered, lowered[1:]))
+    scope = "all" if (structure and data) or everything else "schema" if structure else "data" if data else None
+    table = _name_after(tokens, lowered, "table", "collection")
+    database = _name_after(tokens, lowered, "database", "db")
+    if not (fmt or scope or table or database or "database" in lowered or "table" in lowered):
+        return None
+    return DatabaseCommand(
+        DatabaseIntent.EXPORT, database_name=database, table_name=table, export_format=fmt, export_scope=scope, raw_text=raw
+    )
+
+
+def _design(m: re.Match, raw: str) -> DatabaseCommand | None:
+    from mdc.portability.design import parse_design_prompt
+
+    plan = parse_design_prompt(raw)
+    return None if plan is None else DatabaseCommand(DatabaseIntent.DESIGN_SCHEMA, design_plan=plan, raw_text=raw)
+
+
+_ER_START = re.compile(r"^[ \t]*erDiagram\b", re.IGNORECASE | re.MULTILINE)
+
+
+def _design_from_diagram(text: str) -> DatabaseCommand | None:
+    """A message that contains a Mermaid `erDiagram` is a schema to build."""
+    from mdc.portability.plan import ImportFormatError
+    from mdc.portability.readers import read_mermaid
+
+    start = _ER_START.search(text)
+    if start is None:
+        return None
+    named = re.search(rf"\bdatabase\s+(?:called\s+|named\s+)?({_NAME_TOKEN})", text[: start.start()], re.IGNORECASE)
+    diagram = text[start.start():].split("```")[0]
+    try:
+        plan = read_mermaid(diagram, target="file" if named else "session")
+    except ImportFormatError as exc:
+        return DatabaseCommand(DatabaseIntent.DESIGN_SCHEMA, design_error=str(exc), raw_text=text)
+    if named:
+        plan.database = named.group(1)
+    return DatabaseCommand(DatabaseIntent.DESIGN_SCHEMA, design_plan=plan, raw_text=text)
+
+
+def _transfer_help(m: re.Match, raw: str) -> DatabaseCommand | None:
+    return DatabaseCommand(DatabaseIntent.TRANSFER_HELP, raw_text=raw)
+
+
 # A trailing "in database <name>" / "in <name> database" clause - both
 # word orders, since real phrasing goes both ways ("in database default"
 # vs. "in the default database") - always gated behind the literal word
@@ -242,6 +328,11 @@ _PATTERNS: list[tuple[re.Pattern[str], Any]] = [
     ),
     (re.compile(rf"^insert\s+into\s+({_NAME_TOKEN})\s+(.+)$", re.IGNORECASE), _insert),
     (re.compile(r"^(?:i\s+want\s+to\s+|please\s+|can\s+you\s+|could\s+you\s+)*find\s+(.+)$", re.IGNORECASE), _find),
+    (re.compile(r"^(?:export|download)\s*$|^import(?:\s+.*)?$", re.IGNORECASE), _transfer_help),
+    (re.compile(r"^(?:please\s+)?(?:export|download)\s+(.+)$", re.IGNORECASE), _export),
+    # Last, so every specific pattern above wins: "create database <name>" and
+    # "create table <name> with ..." never reach the design grammar.
+    (re.compile(r"^.+$", re.DOTALL), _design),
 ]
 
 
@@ -249,6 +340,9 @@ def parse_database_command(text: str) -> DatabaseCommand | None:
     stripped = text.strip()
     if not stripped:
         return None
+    diagram = _design_from_diagram(stripped)
+    if diagram is not None:
+        return diagram
     for pattern, builder in _PATTERNS:
         match = pattern.match(stripped)
         if not match:
