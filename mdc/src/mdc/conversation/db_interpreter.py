@@ -19,6 +19,10 @@ from mdc.databases.manager import DatabaseManager
 from mdc.model.operation import CreateOperation, ReadOperation
 from urllib.parse import quote
 
+import json
+
+from mdc.events import EventStoreError
+from mdc.events.timeparse import parse_time
 from mdc.nlp.db_command import DatabaseCommand, DatabaseIntent
 from mdc.portability.apply import prepare_import, resolve_database_name
 from mdc.portability.plan import ExportOptionError, ImportConflictError, ImportDataError, ImportFormatError, ImportPlan
@@ -304,6 +308,70 @@ def apply_pending_schema(state: StorageConversationState, manager: DatabaseManag
     return TurnResult(result.summary())
 
 
+
+def _compact(value: object) -> object:
+    return value if isinstance(value, (str, int, float, bool)) or value is None else json.dumps(value, separators=(",", ":"))
+
+
+def _change_summary(kind: str, payload: object) -> str:
+    if kind == "base":
+        return "starting state: " + (", ".join(payload) if isinstance(payload, dict) and payload else "(empty)")
+    if isinstance(payload, list):
+        parts = [f'{op.get("op", "?")} {".".join(op.get("path", []))}' for op in payload if isinstance(op, dict)]
+        return "; ".join(parts) or "(no change)"
+    return "(custom event)"
+
+
+def _handle_stream(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
+    """Chat access to event-sourced agent-state streams in the current
+    database. The same EventStore the REST API uses; state is only ever
+    changed by appending an event, never edited in place."""
+    assert command.stream_id is not None or command.intent == DatabaseIntent.STREAM_LIST
+    if command.stream_error is not None:
+        return TurnResult(command.stream_error)
+    try:
+        events = manager.events(state.current_database)
+    except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+        return TurnResult(str(exc))
+    database, stream = state.current_database, command.stream_id
+    try:
+        if command.intent == DatabaseIntent.STREAM_LIST:
+            streams = events.list_streams()
+            if not streams:
+                return TurnResult(f'No streams in "{database}" yet. Try: create stream agent-1 with mood=calm, goal=idle')
+            return TurnResult(f'{len(streams)} stream(s) in "{database}".', data=streams)
+        assert stream is not None
+        if command.intent == DatabaseIntent.STREAM_CREATE:
+            view = events.create_stream(stream, command.stream_values, note="chat")
+            return TurnResult(f'Created stream "{stream}" in "{database}" with {len(view.state)} field(s), at {view.ts.isoformat()}.')
+        if command.intent == DatabaseIntent.STREAM_UPDATE:
+            ops = [{"op": "set", "path": key.split("."), "value": value} for key, value in command.stream_values.items()]
+            ops += [{"op": "unset", "path": key.split(".")} for key in command.stream_unset]
+            event = events.append(stream, payload=ops, note="chat")
+            return TurnResult(f'Recorded event {event.seq} on stream "{stream}" ({len(ops)} change(s)), at {event.ts.isoformat()}.')
+        if command.intent == DatabaseIntent.STREAM_HISTORY:
+            log = events.history(stream, limit=50)
+            rows = [{"seq": e.seq, "time": e.ts.isoformat(), "kind": e.kind, "note": e.note or "", "change": _change_summary(e.kind, e.payload)} for e in log]
+            return TurnResult(f'{len(log)} record(s) on stream "{stream}"' + (" (the latest 50)." if len(log) == 50 else "."), data=rows)
+        at = parse_time(command.stream_at) if command.stream_at else None
+        view = events.state_at(stream, at=at, seq=command.stream_seq)
+    except ValueError as exc:  # an unreadable time
+        return TurnResult(str(exc))
+    except EventStoreError as exc:
+        return TurnResult(str(exc))
+    rows = [{"field": key, "value": _compact(value)} for key, value in view.state.items()]
+    if at is not None:
+        scope = f"as of {at.isoformat()}"
+    elif command.stream_seq is not None:
+        scope = f"after event {command.stream_seq}"
+    else:
+        scope = "latest state"
+    detail = view.ts.isoformat() if command.stream_seq is not None else f"event {view.seq}, {view.ts.isoformat()}"
+    head = f'Stream "{stream}" {scope} ({detail})'
+    return TurnResult(f"{head}: {len(rows)} field(s)." if rows else f"{head}: the state is empty.", data=rows or None)
+
+
+
 _HANDLERS = {
     DatabaseIntent.CREATE_DATABASE: _handle_create_database,
     DatabaseIntent.USE_DATABASE: _handle_use_database,
@@ -317,4 +385,9 @@ _HANDLERS = {
     DatabaseIntent.EXPORT: _handle_export,
     DatabaseIntent.TRANSFER_HELP: _handle_transfer_help,
     DatabaseIntent.DESIGN_SCHEMA: _handle_design_schema,
+    DatabaseIntent.STREAM_LIST: _handle_stream,
+    DatabaseIntent.STREAM_CREATE: _handle_stream,
+    DatabaseIntent.STREAM_UPDATE: _handle_stream,
+    DatabaseIntent.STREAM_SHOW: _handle_stream,
+    DatabaseIntent.STREAM_HISTORY: _handle_stream,
 }

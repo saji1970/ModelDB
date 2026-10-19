@@ -204,6 +204,7 @@
       <a href="#tables">Tables &amp; queries</a>
       <a href="#find">Universal search</a>
       <a href="#import-export">Import, export &amp; design</a>
+      <a href="#streams">Agent state streams</a>
     </div>
     <div class="grp">
       <div class="grp-label">Reference</div>
@@ -422,6 +423,47 @@ Create it? Reply yes to create it - anything else drops it.</span>
       <p>This is a deterministic grammar, not a language model: a field without a type is a string unless its name suggests otherwise (<code>total</code>, <code>price</code> -&gt; decimal; <code>age</code>, <code>count</code> -&gt; integer; <code>is_...</code>, <code>active</code> -&gt; boolean; <code>..._at</code>, <code>date</code>, <code>joined</code> -&gt; datetime), and every guess is listed. Free-form requests such as "I need a database for a school" are not interpreted - that needs a language model, which this build does not include.</p>
     </section>
 
+    <section id="streams">
+      <h2>Agent state streams (event sourcing)</h2>
+      <p>A <strong>stream</strong> keeps an agent's state as a base snapshot plus an append-only log of timestamped changes. Nothing is edited in place, so MDC can rebuild the state exactly as it was at any moment - what the agent knew at 10:30 yesterday, or right after its third change.</p>
+      <div class="transcript"><span class="prompt">&gt; create stream agent-1 with mood=calm, goal=idle, level=1</span>
+<span class="reply">Created stream "agent-1" in "default" with 3 field(s), at 2026-10-19T10:00:00+00:00.</span>
+
+<span class="prompt">&gt; update stream agent-1 set mood=busy, goal="write report"</span>
+<span class="reply">Recorded event 1 on stream "agent-1" (2 change(s)), at 2026-10-19T11:00:00+00:00.</span>
+
+<span class="prompt">&gt; show stream agent-1 as of 2026-10-19T10:30:00Z</span>
+<span class="reply">Stream "agent-1" as of 2026-10-19T10:30:00+00:00 (event 0, 2026-10-19T10:00:00+00:00): 3 field(s).
+  mood: calm   goal: idle   level: 1</span>
+
+<span class="prompt">&gt; show history of stream agent-1</span></div>
+      <table>
+        <tr><th>Say</th><th>Does</th></tr>
+        <tr><td><code>create stream &lt;id&gt; with mood=calm, level=3</code> (or a JSON object)</td><td>Start a stream with its base state</td></tr>
+        <tr><td><code>update stream &lt;id&gt; set mood=busy, memory.last_tool=search</code></td><td>Record a change (dotted names edit nested fields)</td></tr>
+        <tr><td><code>update stream &lt;id&gt; remove goal, mood</code></td><td>Record the removal of fields</td></tr>
+        <tr><td><code>show stream &lt;id&gt;</code> &middot; <code>... as of &lt;time&gt;</code> &middot; <code>... after event 3</code></td><td>Rebuild the state: latest, as of a time, or after a given event</td></tr>
+        <tr><td><code>show history of stream &lt;id&gt;</code> &middot; <code>list streams</code></td><td>The log (what changed, when), or every stream in the current database</td></tr>
+      </table>
+      <p>A time is an ISO timestamp (<code>2026-10-19T10:30:00Z</code>, no zone means UTC), a date (<code>2026-10-19</code> means the <em>end</em> of that day, UTC), or <code>15 minutes ago</code>. Asking for a time before the stream was created is an error, not an empty state.</p>
+      <table>
+        <tr><th>Endpoint</th><th>Does</th></tr>
+        <tr><td><code>POST /databases/{name}/streams/{stream}</code></td><td>Create with a base <code>state</code> (optional <code>note</code>, <code>at</code>)</td></tr>
+        <tr><td><code>POST /databases/{name}/streams/{stream}/events</code></td><td>Append: send the full new <code>state</code> (MDC works out the change) or a codec <code>payload</code>; <code>expected_seq</code> rejects the write if someone appended first</td></tr>
+        <tr><td><code>GET /databases/{name}/streams/{stream}</code></td><td>The rebuilt state - <code>?at=</code> (ISO time) or <code>?seq=</code>; neither means latest</td></tr>
+        <tr><td><code>GET /databases/{name}/streams/{stream}/history</code></td><td>The log - <code>?since=&amp;until=&amp;limit=</code></td></tr>
+        <tr><td><code>GET /databases/{name}/streams</code> &middot; <code>DELETE .../streams/{stream}</code></td><td>List streams; delete one (needs write)</td></tr>
+      </table>
+
+      <h3>What is sealed, and what that does and doesn't protect</h3>
+      <p>Every record - the base state, each event, and the timestamps inside them - is encrypted with AES-256-GCM under a key derived <em>per stream</em> from the server's master key (<code>MDC_DNA_KEY</code>, or the key file the DNA tier already uses). Someone who gets at the database file sees ciphertext: not the fields, not the values, not what changed, not the event times. Each record is also bound to its stream and position, so a copied, swapped, altered or deleted event is detected on read and reported, never silently replayed.</p>
+      <div class="callout"><strong>The honest limits</strong>The storage layer still shows the stream id, how many records there are, their sizes, and when each record was written - so for live appends the rough time of a change is visible (not for back-filled ones). The key lives on the server: anyone with both the key and the file can read everything, and losing the key makes the streams unreadable. And the <em>API</em> is not per-stream private: any token with read permission can read any stream in that database. Sealing protects the stored bytes, not the API from its own callers.</div>
+
+      <h3>Where the AI model fits</h3>
+      <p>The agent decides what its state is and when it changed, and records that by posting a new state or a change. How a change is <em>encoded</em> is the job of a <strong>codec</strong>: the built-in one writes <code>set</code>/<code>unset</code> operations on paths. A library user can supply their own codec (for example one that records decisions or compacted summaries) with <code>EventStore(..., codecs={...})</code>. Replay is always the codec's deterministic <code>apply</code> - a state is rebuilt by running the log, never by asking a model to remember - and since a codec is Python code, the REST API and chat only use the built-in one.</p>
+      <p>Also: one writing process per database (a second writer is caught and refused, not merged); recorded times never run backwards (back-filling with <code>at</code> is allowed, rewriting the past is not); one record may be at most 1&nbsp;MB; master-key rotation is not implemented.</p>
+    </section>
+
     <section id="rest-api">
       <h2>REST API reference</h2>
       <p style="color:var(--text-dim); font-size:14.5px;">Every route below requires <code>Authorization: Bearer &lt;token&gt;</code> - see <a href="#integrations">Connect your own NLU or UI</a> for how to issue one.</p>
@@ -441,6 +483,7 @@ Create it? Reply yes to create it - anything else drops it.</span>
         <tr><td><code>GET /find</code></td><td>Structured universal search - <code>?q=&amp;min=&amp;max=&amp;database=&amp;table=</code></td></tr>
         <tr><td><code>GET /databases/{name}/export</code></td><td>Download a database - <code>?format=csv|sql|xlsx|md|er|dnadb&amp;scope=schema|data|all&amp;table=</code></td></tr>
         <tr><td><code>POST /databases/import</code></td><td>Create a database or tables from an uploaded file (raw body, <code>?filename=</code> picks the format, optional <code>&amp;database=</code>)</td></tr>
+        <tr><td><code>/databases/{name}/streams/...</code></td><td>Event-sourced agent state: create, append, rebuild as of a time, history - see <a href="#streams">Agent state streams</a></td></tr>
         <tr><td><code>POST /chat</code></td><td>The same conversational layer the CLI and browser chat panel use</td></tr>
         <tr><td><code>POST /chat/attach</code></td><td>The chat window's paperclip: like import, but a CSV lands in the chat session's current database</td></tr>
       </table>
@@ -455,6 +498,7 @@ Create it? Reply yes to create it - anything else drops it.</span>
         <tr><td><code>find &lt;text&gt; [under/over &lt;amount&gt;]</code></td><td>Search every database and document at once</td></tr>
         <tr><td><code>export database as csv|sql|excel|markdown</code>, <code>export schema as er diagram</code>, <code>export database with data</code></td><td>Download a database - see <a href="#import-export">Import, export &amp; design</a></td></tr>
         <tr><td><code>create database shop with customers(name, email), orders(total decimal)</code>, or a pasted <code>erDiagram</code></td><td>Propose a schema, then create it on <code>yes</code></td></tr>
+        <tr><td><code>create stream agent-1 with mood=calm</code>, <code>update stream agent-1 set mood=busy</code>, <code>show stream agent-1 as of 15 minutes ago</code></td><td>Event-sourced agent state - see <a href="#streams">Agent state streams</a></td></tr>
         <tr><td><code>cancel</code>, <code>never mind</code>, <code>/reset</code></td><td>Drop whatever question or proposal the chat is waiting on</td></tr>
         <tr><td><code>Show all merchants</code>, <code>Create a merchant called ...</code></td><td>Merchants CRUD/analytics (a separate, earlier conversational domain - see the platform README for why)</td></tr>
       </table>
