@@ -40,6 +40,19 @@ def test_list_by_type(chat: ChatEngine, service: ObjectService):
     assert len(reply.data) == 1
 
 
+@pytest.mark.parametrize("text", ["show objects", "list objects", "show all files"])
+def test_listing_every_object_is_not_read_as_a_merchant_lookup(chat: ChatEngine, service: ObjectService, text: str):
+    service.upload(b"# Doc\n\nBody.", filename="a.md")
+    service.upload(b"log line\n" * 3, filename="a.log")
+    reply = chat.handle("s1", text)
+    assert reply.message == "2 object(s)." and "merchant" not in reply.message.lower()
+    assert len(reply.data) == 2
+
+
+def test_listing_every_object_when_there_are_none(chat: ChatEngine):
+    assert chat.handle("s1", "show objects").message == "0 object(s)."
+
+
 def test_list_by_tier_requires_in_phrasing(chat: ChatEngine, service: ObjectService):
     service.upload(b"log line\n" * 3, filename="a.log")
     reply = chat.handle("s1", "show objects in warm")
