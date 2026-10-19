@@ -117,7 +117,55 @@ collection in any database via explicit phrasing instead.
 
 `StorageBackend` (`storage/interface.py`) is block-addressed
 (`put`/`get`/`exists`/`delete`/`metadata`/`search`) so `MDCDataEngine`
-never depends on DuckDB specifically. `DuckDBStore` is the only
-implementation today; `MatrixStore` and `DNAStore` (CLAUDE.md sections
-33-38) would implement the same interface without any change above the
-storage layer.
+never depends on DuckDB specifically. Implementations: `DuckDBStore`
+(durable, one file per database), `MemoryStorageBackend` (the HOT tier),
+and `DNAStorageBackend` (the ARCHIVE tier: AES-256-GCM first, then 2 bits
+per base). `StorageRouter` (`storage_intelligence/router.py`) sends each
+object to a tier's backend; matrix storage lives in `matrix/`.
+
+## Later additions
+
+Each of these sits on the same Data Engine / `StorageBackend` layer and
+reaches storage only through it.
+
+- **`portability/`** - import and export. Readers (CSV, SQL script, Markdown
+  design document, Mermaid ER diagram, MDC export file) all produce one
+  `ImportPlan`; `apply.prepare_import` validates it (names, conflicts, value
+  types, required fields, record ids) and reports the permissions applying it
+  needs *before* anything is written. A SQL script is parsed into tables and
+  rows and never executed. Writers produce CSV, SQL, Excel, a Markdown design
+  document with an ER diagram, and the MDC export file. `design.py` is the
+  deterministic grammar behind "create database shop with customers(...)", with
+  `SchemaDesigner` as the seam for a language model; its output is previewed
+  and confirmed like everything else.
+- **`events/`** - event-sourced agent-state streams. `EventStore` keeps a base
+  state plus an append-only log of timestamped changes on any `StorageBackend`
+  and rebuilds the state as of a time or event. How a change is encoded is a
+  `StateCodec`; replay is deterministic. Every record is sealed (AES-256-GCM,
+  per-stream key via HKDF from the master key, bound to stream, kind and
+  position). `DatabaseManager.events(name)` is the shared entry point.
+- **State and events (concept)** - data that changes over time is kept as
+  *base + ordered events*, never as an overwritten value. State is derived by
+  deterministic replay (`state_at(time | seq)`), so any past state is
+  recoverable; the codec defines the change format; sealing hides the stored
+  bytes. Model weights are *not* event-sourced: they stay in the object store as
+  tensor blocks, so a checkpoint is never rewritten for a one-field change.
+- **Deleting** - `MDCDataEngine.count_records / delete_record /
+  drop_collection` and `DatabaseManager.summarize / drop / drop_table`. Chat
+  asks for confirmation (`conversation/state.PendingDrop`); REST asks for
+  `?confirm=`. The `default` database and its `merchants` table are protected.
+- **`security/`** - `roles.py` (viewer, editor, db_admin, admin and their
+  permissions, including `drop`), `tokens.py` (hashed bearer tokens),
+  `users.py` (scrypt-hashed accounts), `keys.py` (the master key for sealed
+  data). Accounts share the role vocabulary but are not a login yet: access is
+  decided by the role of the token presented.
+- **`api/`** - the FastAPI app (`app.py`), the chat engine (`chat.py`, one per
+  session state, shared by the Explorer and `POST /chat`), and the Storage
+  Explorer page (`static/index.html`). `deploy/serve.py` runs the same app in a
+  container with a health check and a token prompt in place of the embedded
+  admin token.
+- **Chat dispatch** - database administration (`nlp/db_command.py`), then
+  object storage (`nlp/command.py`), then merchants (`cql`); each requires its
+  own literal keywords so the three vocabularies cannot collide. Pending
+  confirmations (deletes, schema proposals) are cleared by any reply that is
+  not the confirmation, so a question never traps the conversation.

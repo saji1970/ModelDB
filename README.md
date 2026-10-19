@@ -10,7 +10,14 @@ DNA-inspired data-storage and AI-infrastructure research: a conversational data 
 
 ### [MDC — Molecular Data Center](mdc/) · [docs](https://saji1970.github.io/ModelDB/platform.html)
 
-A conversational data engine that stores AI models, images, documents, and ordinary database tables side by side — queried entirely in plain sentences, no SQL required. An LLM proposes an interpretation; a deterministic validator, never the LLM itself, decides what operation actually reaches storage. Tensor-level model access (retrieve one layer without touching the rest of the checkpoint), real tiered storage down to a working DNA-encoding archival tier (AES-256-GCM encrypted, then binary → A/C/G/T, with a real error-correction and corruption-simulation harness — see the whitepaper above), a bearer-token-gated REST API open for third-party NLU integration (RASA or custom).
+A conversational data engine that stores AI models, images, documents, and ordinary database tables side by side — queried entirely in plain sentences, no SQL required. An LLM proposes an interpretation; a deterministic validator, never the LLM itself, decides what operation actually reaches storage.
+
+- **Store anything:** objects classified by content and tiered HOT / WARM / COLD / ARCHIVE; tensor-level model access (retrieve one layer without touching the rest of the checkpoint); an ARCHIVE tier that encrypts with AES-256-GCM and then encodes to A/C/G/T, with error correction and a corruption simulator (see the whitepaper above).
+- **Databases and tables:** unlimited isolated databases, typed tables, universal `find` across all of them.
+- **Import and export:** in from a Markdown design document, CSV, SQL script (parsed, never run), Mermaid ER diagram or an MDC export; out as CSV, SQL, Excel, a design document with an ER diagram, or an MDC export file. Schemas can also be proposed from a prompt or a pasted ER diagram and are created on `yes`.
+- **Agent state streams:** event sourcing — a base state plus timestamped changes, rebuilt exactly as of any time, sealed per stream.
+- **Safe deletes:** drop a database or table, delete a row or stream, only after it shows what would be lost.
+- **Storage Explorer and API:** a browser app with a chat panel, and a bearer-token REST API with four roles, open to third-party NLU (RASA or custom); Docker and Railway deployment.
 
 ```bash
 cd mdc && pip install -r requirements.txt && mdc token issue my-integration && python -m mdc serve

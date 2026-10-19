@@ -34,6 +34,20 @@
   "license": "https://github.com/saji1970/ModelDB/blob/main/mdc/LICENSE",
   "applicationCategory": "DeveloperApplication",
   "author": { "@type": "Person", "name": "Saji Pillai" },
+  "featureList": [
+    "Plain-sentence create, read, update, delete and analytics",
+    "Object store for AI models, images, documents and logs with HOT/WARM/COLD/ARCHIVE tiers",
+    "Tensor-level AI model storage",
+    "Encrypted DNA-inspired archive tier",
+    "Unlimited databases, typed tables and universal search",
+    "Import from Markdown, CSV, SQL, ER diagram and MDC export; export to CSV, SQL, Excel, design document and ER diagram",
+    "Schema design from a prompt or ER diagram",
+    "Event-sourced agent state streams with time travel",
+    "Confirmed deletion of databases, tables, rows and streams",
+    "Storage Explorer browser UI",
+    "Bearer-token REST API with role-based access",
+    "Docker and Railway deployment"
+  ],
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
@@ -188,6 +202,7 @@
   <aside id="sidebar">
     <div class="grp">
       <div class="grp-label">Get started</div>
+      <a href="#features">Features at a glance</a>
       <a href="#installation">Installation</a>
       <a href="#concepts">Core concepts</a>
       <a href="#no-sql">No SQL required</a>
@@ -208,8 +223,15 @@
       <a href="#deleting">Deleting things</a>
     </div>
     <div class="grp">
+      <div class="grp-label">Run &amp; secure</div>
+      <a href="#explorer">Storage Explorer</a>
+      <a href="#security">Security &amp; access</a>
+      <a href="#deployment">Deployment</a>
+    </div>
+    <div class="grp">
       <div class="grp-label">Reference</div>
       <a href="#rest-api">REST API</a>
+      <a href="#cli">Command line</a>
       <a href="#chat-commands">Chat commands</a>
       <a href="#integrations">Integrations (RASA, custom UI)</a>
     </div>
@@ -218,6 +240,25 @@
   <main>
     <h1>MDC Platform</h1>
     <p class="lede">A server that stores AI models, images, documents, and ordinary database tables side by side — queried entirely in plain sentences. No <code>SELECT</code>, no <code>JOIN</code>, nothing your support team needs to be trained on before they can get an answer out of it.</p>
+
+    <section id="features">
+      <h2>Features at a glance</h2>
+      <table>
+        <tr><th>Feature</th><th>What you get</th><th></th></tr>
+        <tr><td>Plain-sentence data</td><td>Create, read, update, delete and analyse by asking; ambiguity is clarified, deletes are confirmed, no SQL is ever generated</td><td><a href="#no-sql">more</a></td></tr>
+        <tr><td>Object store</td><td>Any bytes - AI models, images, documents, logs, tensors, tables - classified by content and tiered HOT / WARM / COLD / ARCHIVE</td><td><a href="#other-objects">more</a></td></tr>
+        <tr><td>AI model storage</td><td><code>.safetensors</code> parsed; every tensor stored and tiered on its own; fetch one layer without the rest</td><td><a href="#models">more</a></td></tr>
+        <tr><td>DNA-inspired archive</td><td>ARCHIVE tier: AES-256-GCM first, then A/C/G/T, with error correction and a corruption simulator (a simulation, not a molecule)</td><td><a href="#tiers">more</a></td></tr>
+        <tr><td>Databases and tables</td><td>Unlimited isolated databases, typed tables, inserts, browsing, and <code>find</code> across all of them</td><td><a href="#multi-db">more</a></td></tr>
+        <tr><td>Import and export</td><td>In: <code>.md</code>, <code>.csv</code>, <code>.sql</code>, ER diagram, MDC export. Out: CSV, SQL, Excel, design document, ER diagram, MDC export</td><td><a href="#import-export">more</a></td></tr>
+        <tr><td>Schema from a prompt</td><td>Describe the tables, or paste an ER diagram; it is previewed and created on <code>yes</code></td><td><a href="#import-export">more</a></td></tr>
+        <tr><td>Agent state streams</td><td>Event sourcing: a base state plus timestamped changes, rebuilt as of any time, sealed per stream</td><td><a href="#streams">more</a></td></tr>
+        <tr><td>Deleting</td><td>Drop a database or table, delete a row or stream - after it shows what would be lost</td><td><a href="#deleting">more</a></td></tr>
+        <tr><td>Storage Explorer</td><td>A browser app: browse by type, tier or database; inspect, upload, move, delete; a chat panel with import and download</td><td><a href="#explorer">more</a></td></tr>
+        <tr><td>REST API and integrations</td><td>Bearer-token API for RASA or your own UI, four roles, structured endpoints for tables, rows, streams, import and export</td><td><a href="#rest-api">more</a></td></tr>
+        <tr><td>Deployment</td><td>Dockerfile and Railway config, health check, persistent volume</td><td><a href="#deployment">more</a></td></tr>
+      </table>
+    </section>
 
     <section id="installation">
       <h2>Installation</h2>
@@ -233,17 +274,41 @@ pip install -r requirements.txt</code></pre>
         <tr><td><code>python -m mdc</code></td><td>The conversational shell (<code>mdc&gt;</code> prompt) - auto-creates and seeds <code>data/mdc.duckdb</code> at a small scale the first time, so startup stays fast.</td></tr>
         <tr><td><code>python -m mdc serve</code></td><td>The REST API and the Storage Explorer browser UI (a Windows-Explorer-style app with a chat panel), at <code>http://127.0.0.1:8000</code>.</td></tr>
       </table>
+      <p><code>python -m mdc serve</code> takes <code>--host</code> (default <code>127.0.0.1</code>), <code>--port</code> (default 8000) and <code>--database</code> (default <code>data/mdc.duckdb</code>). Keep it on the default host - see <a href="#security">Security</a>. The full command list is under <a href="#cli">Command line</a>.</p>
       <p><code>python -m mdc db init</code> seeds the full spec-minimum synthetic payments dataset (10,000 merchants / 50,000 customers / 500,000 transactions, deterministic, seed 42) if you want the larger analytics dataset rather than the small dev seed.</p>
     </section>
 
     <section id="concepts">
       <h2>Core concepts</h2>
-      <p>MDC is two systems sharing one storage layer, kept deliberately separate because they solve different problems:</p>
+      <p>MDC is three things sharing one storage layer, kept deliberately separate because they solve different problems:</p>
       <ul>
         <li><strong>The polymorphic object store</strong> - classifies <em>any</em> uploaded bytes (a model checkpoint, an image, a document, a log file) by real content signature, not filename, and routes it through a tiering decision. This is what <a href="#models">§ AI models</a> and <a href="#other-objects">§ Other objects</a> cover.</li>
-        <li><strong>The database layer</strong> - unlimited named databases, each with its own schema-validated tables, created and queried entirely through chat or the CLI. This is what <a href="#multi-db">§ The database layer</a> covers.</li>
+        <li><strong>The database layer</strong> - unlimited named databases, each with its own schema-validated tables, created and queried entirely through chat or the CLI. This is what <a href="#multi-db">Multiple databases</a>, <a href="#tables">Tables &amp; queries</a>, <a href="#import-export">Import, export &amp; design</a> and <a href="#deleting">Deleting things</a> cover.</li>
+        <li><strong>State and events</strong> - for data that <em>changes over time</em>, such as what an AI agent knows, decided or is doing. Instead of overwriting the current value, MDC keeps a starting state plus every change, each with its time, so the state at any past moment can be rebuilt. This is what <a href="#state-events">State &amp; events</a> and <a href="#streams">Agent state streams</a> cover.</li>
       </ul>
-      <p>Both are driven by the same principle: an LLM proposes an interpretation, but a deterministic validator - never the LLM itself - decides what operation actually reaches storage. No natural-language command generates raw SQL.</p>
+      <p>All three are driven by the same principle: an LLM proposes an interpretation, but a deterministic validator - never the LLM itself - decides what operation actually reaches storage. No natural-language command generates raw SQL.</p>
+
+      <h3 id="state-events">State &amp; events: storing an AI model's data with its history</h3>
+      <p>A normal table keeps only the latest value: update a field and the old one is gone. For an AI agent that is the wrong shape. What it believed yesterday, why it changed its goal, and what its state was when it made a particular decision are all questions you may need to answer later. MDC answers them with <strong>event sourcing</strong>: the state is never edited, it is <em>derived</em> from a base plus an ordered log of changes.</p>
+      <table>
+        <tr><th>Concept</th><th>Meaning in MDC</th></tr>
+        <tr><td><strong>State</strong></td><td>Everything the agent knows or is doing at one moment: a JSON object such as <code>mood</code>, <code>goal</code>, <code>memory.last_tool</code>. It is never stored directly; it is <em>rebuilt</em> on request.</td></tr>
+        <tr><td><strong>Base</strong></td><td>The starting state, recorded once when the stream is created (event 0).</td></tr>
+        <tr><td><strong>Event</strong></td><td>One recorded change: what was set or removed, and when. Events are append-only; they are never edited or deleted individually.</td></tr>
+        <tr><td><strong>Replay</strong></td><td>Applying the events in order on top of the base. It is deterministic: the same log always gives the same state.</td></tr>
+        <tr><td><strong>As of</strong></td><td>Replay stopped at a time (<code>as of 2026-10-19T10:30:00Z</code>) or at an event number (<code>after event 3</code>). This is the time travel.</td></tr>
+        <tr><td><strong>Stream</strong></td><td>One base plus its events, for one agent or model. A database can hold any number of streams.</td></tr>
+        <tr><td><strong>Codec</strong></td><td>The rule for how a change is written down and applied. The built-in codec records <code>set</code>/<code>unset</code> on paths; a library user can supply their own, so the model decides what a state and a change <em>are</em>.</td></tr>
+        <tr><td><strong>Sealed</strong></td><td>Every record, including its times, is AES-256-GCM encrypted under a key derived for that stream. The stored bytes are unreadable without the server's key; the API, or the library with the key, rebuilds the readable state.</td></tr>
+      </table>
+<pre class="code-block"><code>base (event 0)     mood=calm  goal=idle  level=1          10:00
+event 1            mood=busy  goal="write report"           11:00
+event 2            level=2                                  11:40
+
+state as of 10:30  -&gt;  mood=calm  goal=idle  level=1
+state as of 12:00  -&gt;  mood=busy  goal="write report"  level=2</code></pre>
+      <div class="callout"><strong>Models versus model data</strong>The weights of a model (the <code>.safetensors</code> checkpoint) are stored once as tensor blocks in the object store and are not event-sourced. Event streams hold the <em>data a model or agent produces and changes</em>: its working state, memory and decisions. The two are separate on purpose, so a large checkpoint is never rewritten for a one-field change.</div>
+      <p>Nothing here relies on a model to reconstruct anything. A language model, or any other part of an agent, <em>decides</em> what to record; MDC stores it and rebuilds it with deterministic code. How to try it: <a href="#streams">Agent state streams</a>.</p>
     </section>
 
     <section id="no-sql">
@@ -357,10 +422,12 @@ describe table products in database inventory</code></pre>
       <h2>Universal search</h2>
       <p><code>find</code> searches every database's tables <em>and</em> documents at once, with deterministic clause extraction for amount constraints and explicit scoping - no need to know which database or table something lives in:</p>
       <div class="transcript"><span class="prompt">&gt; find widget under 20000</span>
-<span class="reply">1 row(s) matched "widget": ABC123 - Widget - $9.99 (inventory.products)</span>
+<span class="reply">1 row(s) matched "widget".
+  database   table     record_id       sku     name    price
+  inventory  products  PRO-A497AE9E55  ABC123  Widget  9.99</span>
 
 <span class="prompt">&gt; find widget in table products in database inventory</span>
-<span class="reply">1 row(s) matched.</span></div>
+<span class="reply">1 row(s) matched "widget".</span></div>
     </section>
 
     <section id="import-export">
@@ -408,6 +475,7 @@ describe table products in database inventory</code></pre>
         <tr><td>ER diagram</td><td><code>export schema as er diagram</code></td><td>The Mermaid source alone (<code>.mmd</code>)</td></tr>
         <tr><td>MDC export file</td><td><code>export database with data</code>, <code>export schema only</code>, <code>export data only</code></td><td>Structure, data, or both, for importing into another MDC instance</td></tr>
       </table>
+      <div class="callout"><strong>Exports are plain files</strong>The sealing described under <a href="#security">Security</a> protects data stored inside MDC. A CSV, SQL, Excel or MDC export file you download is ordinary readable data - protect and delete it accordingly.</div>
       <p>CSV and Excel cells that start with <code>=</code>, <code>+</code>, <code>-</code> or <code>@</code> are written so a spreadsheet shows them as text rather than running them as formulas; importing the CSV back restores the original value.</p>
 
       <h3>Build a schema from a prompt or an ER diagram</h3>
@@ -491,45 +559,117 @@ To confirm, type the database name (shop). Anything else cancels.</span>
       </ul>
     </section>
 
+    <section id="explorer">
+      <h2>Storage Explorer</h2>
+      <p><code>python -m mdc serve</code>, then open <code>http://127.0.0.1:8000</code>: a Windows-Explorer-style app over everything MDC stores.</p>
+      <table>
+        <tr><th>Part</th><th>What it does</th></tr>
+        <tr><td>Sidebar</td><td>Browse objects by <strong>type</strong> or <strong>tier</strong>, and every <strong>database</strong>; click a database for its tables and a table for its rows</td></tr>
+        <tr><td>Details</td><td>An object's metadata and why it sits in its tier, with buttons to <strong>preview</strong> its content, <strong>archive</strong> it, or <strong>delete</strong> it (the browser asks first); a table's details have <strong>Browse data</strong>. Any other tier move is <code>move &lt;id&gt; to hot</code> in the chat</td></tr>
+        <tr><td>Upload</td><td>Add any file; it is classified and tiered automatically</td></tr>
+        <tr><td>Ask MDC (chat)</td><td>Everything in the <a href="#chat-commands">chat reference</a>. Tables come back as tables; an <code>export</code> command answers with a download button; <code>cancel</code> drops whatever it is waiting on</td></tr>
+        <tr><td>Paperclip / drag and drop</td><td>Import a <code>.md</code>, <code>.csv</code>, <code>.sql</code>, <code>.mmd</code> or MDC export file straight from the chat</td></tr>
+      </table>
+      <p>There is no login screen. Run on your own machine, the page carries a per-process admin token so it works with no setup; the deployed container asks for the API token instead (<a href="#deployment">Deployment</a>).</p>
+    </section>
+
+    <section id="security">
+      <h2>Security &amp; access</h2>
+      <table>
+        <tr><th>What</th><th>How</th></tr>
+        <tr><td>Who can call the API</td><td>Every route except <code>GET /</code> needs <code>Authorization: Bearer &lt;token&gt;</code>. Issue one with <code>mdc token issue &lt;name&gt; --role ...</code>; only a hash is stored. <a href="#integrations">How to issue and use tokens</a></td></tr>
+        <tr><td>What a token may do</td><td>Four roles: <code>viewer</code> reads, <code>editor</code> also writes rows, objects and tables, <code>db_admin</code> also creates databases and <em>drops</em> things, <code>admin</code> also manages accounts. A valid token without the role gets <code>403</code></td></tr>
+        <tr><td>No SQL, ever</td><td>Sentences, imported <code>.sql</code> scripts and table creation all go through the schema registry and the Data Engine; a script is parsed and never executed</td></tr>
+        <tr><td>Imports and deletes</td><td>Validated before anything is written; never overwrite; deletes show what would be lost and wait for confirmation</td></tr>
+        <tr><td>Sealed at rest</td><td>The ARCHIVE tier and event streams are AES-256-GCM encrypted (streams under a per-stream derived key). Key: <code>MDC_DNA_KEY</code> (64 hex characters), or generated once into <code>~/.mdc/dna.key</code></td></tr>
+      </table>
+      <div class="callout"><strong>Know the limits</strong>The encryption key lives on the server: anyone with the key and the files can read them, and losing it makes them unreadable. The API is gated by role, not per stream or per table. Tokens default to <code>admin</code> unless you pass <code>--role</code>. CORS is open on purpose so other front ends can call the API - the token is the access control. And <code>mdc serve</code> hands its page an admin token, so <strong>do not bind it to a public address</strong>; for anything reachable by others, run the container, which asks for the token instead.</div>
+    </section>
+
+    <section id="deployment">
+      <h2>Deployment (Docker &amp; Railway)</h2>
+      <pre class="code-block"><code>docker build -t modeldb .
+docker run -p 8000:8000 -v modeldb:/data \
+  -e MDC_API_TOKENS=choose-a-long-random-token modeldb</code></pre>
+      <p>The image runs the same app as <code>mdc serve</code>, without its interactive first-run prompt, on <code>PORT</code> and on 8000 (every address, IPv6 where available), with <code>GET /healthz</code> for health checks. <code>railway.json</code> builds the Dockerfile, checks <code>/healthz</code>, and requires a volume mounted at <code>/data</code>.</p>
+      <table>
+        <tr><th>Setting</th><th>What it does</th></tr>
+        <tr><td><code>MDC_API_TOKENS</code> (or <code>MODELDB_TOKEN</code>)</td><td>The API token(s). With neither set, one is generated, kept in <code>/data/modeldb-api-token</code> and printed in the deploy log</td></tr>
+        <tr><td><code>MDC_DNA_KEY</code></td><td>64 hex characters: the key for the sealed ARCHIVE tier and streams. Otherwise one is generated under <code>HOME</code> (<code>/data/.mdc/dna.key</code>)</td></tr>
+        <tr><td><code>MODELDB_DATABASE</code></td><td>The default database file (default <code>/data/mdc.duckdb</code>); other databases live beside it in <code>databases/</code></td></tr>
+        <tr><td><code>PORT</code>, <code>HOST</code>, <code>MODELDB_TOKEN_FILE</code></td><td>Listen port, bind address, where a generated token is kept</td></tr>
+        <tr><td>Volume at <code>/data</code></td><td>Without one the database, a generated token and the key are lost on every redeploy (the container warns about it)</td></tr>
+      </table>
+      <p>The deployed Storage Explorer asks you to paste the token (kept for the browser tab); a wrong one is refused and asked for again. <code>/admin</code> redirects to <code>/</code>.</p>
+    </section>
+
     <section id="rest-api">
       <h2>REST API reference</h2>
       <p style="color:var(--text-dim); font-size:14.5px;">Every route below requires <code>Authorization: Bearer &lt;token&gt;</code> - see <a href="#integrations">Connect your own NLU or UI</a> for how to issue one.</p>
       <table>
-        <tr><th>Endpoint</th><th>Does</th></tr>
-        <tr><td><code>POST /objects</code></td><td>Upload any file - classified and routed automatically</td></tr>
-        <tr><td><code>GET /objects/{id}</code></td><td>Metadata: type, tier, compression, checksum</td></tr>
-        <tr><td><code>POST /objects/{id}/read</code></td><td>Raw content back</td></tr>
-        <tr><td><code>POST /objects/{id}/move</code></td><td>Force a tier - cascades to every tensor block for a model</td></tr>
-        <tr><td><code>GET /objects/{id}/strategy</code></td><td>Human-readable explanation of the current tier/compression decision</td></tr>
-        <tr><td><code>GET /models/{id}</code></td><td>A model's manifest (tensor count, parameters, dtype, checksum)</td></tr>
-        <tr><td><code>GET /models/{id}/tensors/{name}</code></td><td>One tensor's raw bytes, without touching the rest of the model</td></tr>
-        <tr><td><code>GET /databases</code> / <code>POST /databases</code></td><td>List or create a named database</td></tr>
-        <tr><td><code>GET /databases/{name}/tables/{table}/rows</code></td><td>A table's rows, from the browser UI or any HTTP client</td></tr>
-        <tr><td><code>POST /databases/{name}/tables/{table}</code></td><td>Create a table from structured field data - no sentence to construct</td></tr>
-        <tr><td><code>POST /databases/{name}/tables/{table}/rows</code></td><td>Insert a row from structured field data</td></tr>
-        <tr><td><code>GET /find</code></td><td>Structured universal search - <code>?q=&amp;min=&amp;max=&amp;database=&amp;table=</code></td></tr>
-        <tr><td><code>GET /databases/{name}/export</code></td><td>Download a database - <code>?format=csv|sql|xlsx|md|er|dnadb&amp;scope=schema|data|all&amp;table=</code></td></tr>
-        <tr><td><code>POST /databases/import</code></td><td>Create a database or tables from an uploaded file (raw body, <code>?filename=</code> picks the format, optional <code>&amp;database=</code>)</td></tr>
-        <tr><td><code>DELETE /databases/{name}?confirm=</code> &middot; <code>DELETE .../tables/{table}?confirm=</code> &middot; <code>DELETE .../rows/{record_id}</code></td><td>Delete a database, a table, or one row - see <a href="#deleting">Deleting things</a></td></tr>
-        <tr><td><code>/databases/{name}/streams/...</code></td><td>Event-sourced agent state: create, append, rebuild as of a time, history - see <a href="#streams">Agent state streams</a></td></tr>
-        <tr><td><code>POST /chat</code></td><td>The same conversational layer the CLI and browser chat panel use</td></tr>
-        <tr><td><code>POST /chat/attach</code></td><td>The chat window's paperclip: like import, but a CSV lands in the chat session's current database</td></tr>
+        <tr><th>Method and path</th><th>Does</th><th>Needs</th></tr>
+        <tr><td><code>POST /objects</code></td><td>Upload any file - classified and tiered automatically</td><td>write</td></tr>
+        <tr><td><code>GET /objects</code> (<code>?type=&amp;tier=</code>), <code>GET /objects/{id}</code>, <code>POST /objects/{id}/read</code>, <code>GET /objects/{id}/strategy</code></td><td>List; metadata (type, tier, compression, checksum); raw content; the explanation of the tier decision</td><td>read</td></tr>
+        <tr><td><code>PUT /objects/{id}</code>, <code>POST /objects/{id}/move</code>, <code>POST /objects/{id}/optimize</code>, <code>DELETE /objects/{id}</code></td><td>Replace; force a tier (cascades to every tensor of a model); re-evaluate; delete</td><td>write</td></tr>
+        <tr><td><code>GET /models/{id}</code>, <code>GET /models/{id}/tensors/{name}</code></td><td>A model's manifest; one tensor's bytes without touching the rest</td><td>read</td></tr>
+        <tr><td><code>GET /databases</code>, <code>POST /databases</code></td><td>List; create a database</td><td>read; create_database</td></tr>
+        <tr><td><code>GET /databases/{name}/tables</code>, <code>.../tables/{table}</code>, <code>.../tables/{table}/rows</code></td><td>Tables; a table's fields; its rows</td><td>read</td></tr>
+        <tr><td><code>POST /databases/{name}/tables/{table}</code></td><td>Create a table from structured field data</td><td>create_table</td></tr>
+        <tr><td><code>POST .../tables/{table}/rows</code>, <code>DELETE .../rows/{record_id}</code></td><td>Insert a row; delete one</td><td>write</td></tr>
+        <tr><td><code>DELETE /databases/{name}?confirm={name}</code>, <code>DELETE .../tables/{table}?confirm={table}</code></td><td>Drop a database or table (<a href="#deleting">Deleting things</a>)</td><td>drop</td></tr>
+        <tr><td><code>GET /databases/{name}/export</code></td><td>Download: <code>?format=csv|sql|xlsx|md|er|dnadb&amp;scope=schema|data|all&amp;table=</code></td><td>read</td></tr>
+        <tr><td><code>POST /databases/import</code></td><td>Create a database or tables from an uploaded file (raw body; <code>?filename=</code> picks the format; optional <code>&amp;database=</code>)</td><td>whatever the import does: create_database, create_table, write</td></tr>
+        <tr><td><code>GET /databases/{name}/streams</code>, <code>.../streams/{s}</code> (<code>?at=</code> or <code>?seq=</code>), <code>.../streams/{s}/history</code></td><td>List; rebuild a state; the log (<a href="#streams">Agent state streams</a>)</td><td>read</td></tr>
+        <tr><td><code>POST .../streams/{s}</code>, <code>POST .../streams/{s}/events</code></td><td>Create with a base state; append a change (<code>expected_seq</code> guards against a lost update)</td><td>write</td></tr>
+        <tr><td><code>DELETE .../streams/{s}</code></td><td>Delete a stream's whole history</td><td>drop</td></tr>
+        <tr><td><code>GET /find</code></td><td>Structured universal search - <code>?q=&amp;min=&amp;max=&amp;database=&amp;table=</code></td><td>read</td></tr>
+        <tr><td><code>POST /chat</code>, <code>POST /chat/attach</code></td><td>The conversational layer the CLI and chat panel use; the paperclip's import (a CSV lands in the session's current database)</td><td>write; then by what it does</td></tr>
       </table>
+    </section>
+
+    <section id="cli">
+      <h2>Command line</h2>
+      <table>
+        <tr><th>Command</th><th>Does</th></tr>
+        <tr><td><code>python -m mdc</code></td><td>The conversational shell (<code>mdc&gt;</code>); slash commands <code>/help</code>, <code>/context</code>, <code>/history</code>, <code>/reset</code>, <code>/exit</code></td></tr>
+        <tr><td><code>python -m mdc serve [--host] [--port] [--database]</code></td><td>The REST API and Storage Explorer</td></tr>
+        <tr><td><code>python -m mdc db init [--scale small]</code></td><td>Create the schema and seed the synthetic payments data</td></tr>
+        <tr><td><code>mdc token issue &lt;name&gt; [--role viewer|editor|db_admin|admin]</code>, <code>token list</code>, <code>token revoke &lt;name&gt;</code></td><td>API tokens</td></tr>
+        <tr><td><code>mdc user create &lt;name&gt; [--role ...]</code>, <code>user list</code>, <code>user set-role &lt;name&gt; &lt;role&gt;</code>, <code>user delete &lt;name&gt;</code></td><td>User accounts (the password is prompted for, never a command-line argument)</td></tr>
+      </table>
+      <p>Where things live: <code>data/mdc.duckdb</code> is the <code>default</code> database; every other one is <code>data/databases/&lt;name&gt;.duckdb</code> with its table structure in <code>&lt;name&gt;.schema.json</code>. Credentials are in <code>~/.mdc/</code>.</p>
     </section>
 
     <section id="chat-commands">
       <h2>Chat command reference</h2>
       <table>
         <tr><th>Say this</th><th>To</th></tr>
-        <tr><td><code>store ./file</code>, <code>list models</code>, <code>show &lt;id&gt;</code>, <code>archive &lt;id&gt;</code>, <code>move &lt;id&gt; to hot</code>, <code>search for &lt;text&gt;</code></td><td>Work with polymorphic objects (models, images, documents, ...)</td></tr>
-        <tr><td><code>create database &lt;name&gt;</code>, <code>create table ... with ...</code>, <code>show data in &lt;table&gt;</code>, <code>insert into &lt;table&gt; ...</code></td><td>Manage databases and tables</td></tr>
-        <tr><td><code>find &lt;text&gt; [under/over &lt;amount&gt;]</code></td><td>Search every database and document at once</td></tr>
-        <tr><td><code>export database as csv|sql|excel|markdown</code>, <code>export schema as er diagram</code>, <code>export database with data</code></td><td>Download a database - see <a href="#import-export">Import, export &amp; design</a></td></tr>
-        <tr><td><code>create database shop with customers(name, email), orders(total decimal)</code>, or a pasted <code>erDiagram</code></td><td>Propose a schema, then create it on <code>yes</code></td></tr>
-        <tr><td><code>create stream agent-1 with mood=calm</code>, <code>update stream agent-1 set mood=busy</code>, <code>show stream agent-1 as of 15 minutes ago</code></td><td>Event-sourced agent state - see <a href="#streams">Agent state streams</a></td></tr>
-        <tr><td><code>drop database &lt;name&gt;</code>, <code>drop table &lt;name&gt;</code>, <code>delete row &lt;id&gt; from table &lt;t&gt;</code>, <code>delete stream &lt;id&gt;</code></td><td>Permanently delete - asks for confirmation first, see <a href="#deleting">Deleting things</a></td></tr>
+        <tr><td><strong>Objects</strong></td><td></td></tr>
+        <tr><td><code>list models</code>, <code>list images</code>, <code>list documents</code> (also video, audio, logs, tensors, tabular, text, binary), <code>list objects in archive</code></td><td>List objects by type or tier</td></tr>
+        <tr><td><code>show &lt;id&gt;</code>, <code>read &lt;id&gt;</code>, <code>explain &lt;id&gt;</code>, <code>where is &lt;id&gt; stored</code></td><td>Metadata, content, and why it is in its tier</td></tr>
+        <tr><td><code>retrieve tensor &lt;name&gt; from model &lt;id&gt;</code>, <code>retrieve layer 3 from model &lt;id&gt;</code></td><td>One tensor or layer of a model</td></tr>
+        <tr><td><code>archive &lt;id&gt;</code>, <code>restore &lt;id&gt;</code>, <code>move &lt;id&gt; to hot|warm|cold|archive</code></td><td>Change tier</td></tr>
+        <tr><td><code>compress &lt;id&gt;</code>, <code>make &lt;id&gt; as compact as possible</code></td><td>Report a preference; the engine still decides</td></tr>
+        <tr><td><code>delete &lt;id&gt;</code></td><td>Delete an object (asks first)</td></tr>
+        <tr><td><code>store ./file</code>, <code>update &lt;id&gt; with ./file</code></td><td>CLI only (the browser chat cannot read your files; use Upload there)</td></tr>
+        <tr><td><strong>Databases and tables</strong></td><td></td></tr>
+        <tr><td><code>create database &lt;name&gt;</code>, <code>use database &lt;name&gt;</code>, <code>list databases</code>, <code>describe database</code></td><td>Create, switch, list, describe</td></tr>
+        <tr><td><code>create table &lt;name&gt; with &lt;field&gt; &lt;type&gt;, ...</code>, <code>describe table &lt;name&gt;</code></td><td>Typed tables: string, decimal, integer, boolean, datetime</td></tr>
+        <tr><td><code>insert into &lt;table&gt; field=value, ...</code>, <code>show data in &lt;table&gt;</code> (<code>... in database &lt;name&gt;</code>)</td><td>Insert and browse, without switching</td></tr>
+        <tr><td><code>find &lt;text&gt; [under|over &lt;amount&gt;] [in table &lt;t&gt;] [in database &lt;d&gt;]</code></td><td>Search every database and document at once</td></tr>
+        <tr><td><strong>Import, export, design</strong></td><td></td></tr>
+        <tr><td><code>export database as csv|sql|excel|markdown</code>, <code>export schema as er diagram</code>, <code>export database with data</code>, <code>export table &lt;t&gt; as csv</code></td><td>Download button - see <a href="#import-export">Import, export &amp; design</a></td></tr>
+        <tr><td>the paperclip (or drop a file); <code>import</code></td><td>Import a <code>.md</code>, <code>.csv</code>, <code>.sql</code>, <code>.mmd</code> or MDC export file</td></tr>
+        <tr><td><code>create database shop with customers(name, email), orders(total decimal)</code>, or a pasted <code>erDiagram</code></td><td>Propose a schema; created on <code>yes</code></td></tr>
+        <tr><td><strong>Agent state streams</strong></td><td></td></tr>
+        <tr><td><code>create stream agent-1 with mood=calm</code>, <code>update stream agent-1 set mood=busy</code>, <code>update stream agent-1 remove goal</code></td><td>Record state and changes - <a href="#streams">Agent state streams</a></td></tr>
+        <tr><td><code>show stream agent-1 [as of &lt;time&gt; | after event N]</code>, <code>show history of stream agent-1</code>, <code>list streams</code></td><td>Rebuild a state at a time; the log; all streams</td></tr>
+        <tr><td><strong>Deleting</strong></td><td></td></tr>
+        <tr><td><code>drop database &lt;name&gt;</code>, <code>drop table &lt;name&gt;</code>, <code>delete row &lt;id&gt; from table &lt;t&gt;</code>, <code>delete stream &lt;id&gt;</code></td><td>Permanent; shows what is lost and asks first - <a href="#deleting">Deleting things</a></td></tr>
+        <tr><td><strong>Merchants</strong></td><td></td></tr>
+        <tr><td><code>Show all merchants</code>, <code>Create a merchant called ABC Store in India</code>, <code>Change ABC Store balance to 15000</code>, <code>Delete merchant ABC Store</code>, analytics like <code>Show merchants with balance above 5000</code></td><td>An earlier, separate conversational domain (clarifies ambiguous fields, confirms deletes) - see the platform README</td></tr>
+        <tr><td><strong>Control</strong></td><td></td></tr>
         <tr><td><code>cancel</code>, <code>never mind</code>, <code>/reset</code></td><td>Drop whatever question or proposal the chat is waiting on</td></tr>
-        <tr><td><code>Show all merchants</code>, <code>Create a merchant called ...</code></td><td>Merchants CRUD/analytics (a separate, earlier conversational domain - see the platform README for why)</td></tr>
       </table>
       <div class="callout"><strong>Full reference</strong>The complete README, including the acceptance-test walkthroughs this documentation draws from, lives at <a href="https://github.com/saji1970/ModelDB/blob/main/mdc/README.md">mdc/README.md</a>; the architecture write-up (including the honest scoping note on why merchants-CRUD and the object store stay separate systems) is at <a href="https://github.com/saji1970/ModelDB/blob/main/mdc/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>.</div>
     </section>
@@ -556,7 +696,7 @@ mdc_kP3x...   (shown once - store it now)</code></pre>
       <p>A token with an insufficient role still authenticates - a valid-but-underprivileged token gets <code>403</code>, not the <code>401</code> reserved for a missing or invalid token.</p>
 
       <h3>User accounts and roles (CLI)</h3>
-      <p>Separately from API tokens, the CLI itself now has real accounts. The first time you run <code>mdc</code> or <code>mdc serve</code> with no user configured yet, it interactively asks for an admin username and password and creates that first account as <code>admin</code> - the same four roles as tokens, since both share one vocabulary. Manage accounts afterward with:</p>
+      <p>Separately from API tokens, MDC keeps user accounts. The first time you run <code>mdc</code> or <code>mdc serve</code> with no user configured yet, it interactively asks for an admin username and password and creates that first account as <code>admin</code> - the same four roles as tokens, since both share one vocabulary. Manage accounts afterward with:</p>
       <pre class="code-block"><code>$ mdc user create alice --role editor
 Password: ********
 Repeat for confirmation: ********
@@ -568,6 +708,7 @@ $ mdc user list
 
 $ mdc user set-role alice db_admin
 $ mdc user delete alice</code></pre>
+      <div class="callout"><strong>Accounts are not a login yet</strong>The shell and the Storage Explorer do not ask you to sign in. Accounts exist so that people and tokens share one set of roles; today, what a caller can do is decided by the role of the <em>token</em> it presents (the Explorer, served from your own machine, carries its own admin token).</div>
       <p>Passwords are never stored in a recoverable form - <code>hashlib.scrypt</code> derives a key from the password and a random per-user salt, and only that salt and derived key are persisted (mode <code>0600</code>), the same reasoning already used for API tokens.</p>
 
       <h3>Pattern 1 — pass-through (simplest, works today, zero new code)</h3>

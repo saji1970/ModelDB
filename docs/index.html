@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>mdc-lite — encrypted key-value store for mobile &amp; wearables</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A 348 KB embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS apps. XChaCha20-Poly1305 encryption plus DNA-encoded storage, a 5-function C ABI, real cross-platform builds.">
+<meta name="description" content="A 348 KB embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS apps. XChaCha20-Poly1305 encryption plus DNA-encoded storage, a 5-function C ABI, real cross-platform builds. Part of ModelDB, which also includes MDC Platform, a conversational data server.">
 <meta name="keywords" content="embedded database, encrypted key-value store, mobile database, iOS storage, Android storage, watchOS, Wear OS, Rust, XChaCha20-Poly1305, encryption, offline-first storage">
 <meta name="author" content="Saji Pillai">
 <link rel="canonical" href="https://saji1970.github.io/ModelDB/">
@@ -275,6 +275,7 @@
   <div class="brand">mdc<span class="dot">·</span>lite</div>
   <nav>
     <a href="#products">Products</a>
+    <a href="#platform">MDC Platform</a>
     <a href="#features">Features</a>
     <a href="#platforms">Platforms</a>
     <a href="#quickstart">Quickstart</a>
@@ -299,6 +300,7 @@
       <a class="btn btn-primary" href="#platforms">Get a build</a>
       <a class="btn btn-ghost" href="docs.html">Read the docs</a>
       <a class="btn btn-ghost" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite">Source</a>
+      <a class="btn btn-ghost" href="#platform">MDC Platform</a>
     </div>
 
     <div id="byte-diagram">
@@ -329,11 +331,12 @@
         <tr><td class="plat-name">What it is</td><td class="size-cell" data-label="mdc-lite">An embeddable library, linked into your app's binary</td><td class="size-cell" data-label="MDC Platform">A server you run and talk to</td></tr>
         <tr><td class="plat-name">Where it runs</td><td class="size-cell" data-label="mdc-lite">Inside the app itself — no network, no server</td><td class="size-cell" data-label="MDC Platform">On a machine with Python, reachable over the network</td></tr>
         <tr><td class="plat-name">What it stores</td><td class="size-cell" data-label="mdc-lite">Small generic objects — settings, credentials, cached blobs. No AI models.</td><td class="size-cell" data-label="MDC Platform">AI models, images, documents, database tables</td></tr>
-        <tr><td class="plat-name">CLI / desktop app</td><td class="size-cell" data-label="mdc-lite">None — mobile/wearable embedding only</td><td class="size-cell" data-label="MDC Platform">Yes — conversational CLI + REST API</td></tr>
+        <tr><td class="plat-name">CLI / desktop app</td><td class="size-cell" data-label="mdc-lite">None — mobile/wearable embedding only</td><td class="size-cell" data-label="MDC Platform">Yes — conversational CLI, browser Storage Explorer, REST API</td></tr>
         <tr><td class="plat-name">How you talk to it</td><td class="size-cell" data-label="mdc-lite">5 functions: put / get / exists / delete / list_keys</td><td class="size-cell" data-label="MDC Platform">Plain sentences — no SQL, nothing to train support staff on</td></tr>
-        <tr><td class="plat-name">Encryption</td><td class="size-cell" data-label="mdc-lite">Mandatory — every value and every key name</td><td class="size-cell" data-label="MDC Platform">Mandatory on the DNA archive tier (AES-256-GCM)</td></tr>
+        <tr><td class="plat-name">Encryption</td><td class="size-cell" data-label="mdc-lite">Mandatory — every value and every key name</td><td class="size-cell" data-label="MDC Platform">Mandatory on the DNA archive tier and on agent-state streams (AES-256-GCM)</td></tr>
         <tr><td class="plat-name">DNA-inspired encoding</td><td class="size-cell" data-label="mdc-lite">Yes — every entry is stored as an encrypted ACGT sequence</td><td class="size-cell" data-label="MDC Platform">Yes — the archive tier, same encrypt-then-encode model</td></tr>
-        <tr><td class="plat-name">External API access</td><td class="size-cell" data-label="mdc-lite">N/A — no network surface</td><td class="size-cell" data-label="MDC Platform">Bearer-token REST API for custom apps/NLU integrations</td></tr>
+        <tr><td class="plat-name">External API access</td><td class="size-cell" data-label="mdc-lite">N/A — no network surface</td><td class="size-cell" data-label="MDC Platform">Bearer-token REST API with four roles (viewer to admin), for custom apps and NLU integrations</td></tr>
+        <tr><td class="plat-name">Data tools</td><td class="size-cell" data-label="mdc-lite">None — a key-value store</td><td class="size-cell" data-label="MDC Platform">Import and export (CSV, SQL, Excel, ER diagram), schema from a prompt, event-sourced agent state, confirmed deletes</td></tr>
       </tbody>
     </table>
     <div class="callout"><strong>Is either one's data actually stored as a DNA molecule?</strong>No. Both encode data as A/C/G/T <em>text</em> — mdc-lite in its on-disk files, MDC Platform in its archive tier — but it's always encrypted first, then represented as base-letter characters in an ordinary file or database. A software simulation, not a physical molecule. No synthesis, no sequencing, no wet lab, anywhere in either codebase.</div>
@@ -343,10 +346,72 @@
     </div>
   </section>
 
+  <section id="platform">
+    <div class="section-head">
+      <h2>What MDC Platform does</h2>
+      <span class="num">02 — PLATFORM</span>
+    </div>
+    <p style="color:var(--text-dim); max-width:64ch; margin-bottom:24px;">The server side of the project: store AI models, images, documents and database tables together and work with them in plain sentences. <a href="platform.html">Full documentation →</a></p>
+    <div class="feature-rows">
+      <div class="frow">
+        <div><span class="tag">Plain sentences</span><h3>Ask, don't query</h3></div>
+        <p>Create, read, update, delete and analyse by asking. Ambiguous words are clarified, deletes are confirmed, and no sentence ever becomes SQL — a deterministic validator, not the language model, decides what reaches storage. <a href="platform.html#no-sql">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Object store</span><h3>Any bytes, classified by content</h3></div>
+        <p>AI models, images, documents, logs, tensors and tables are recognised from their content (not the filename) and tiered HOT / WARM / COLD / ARCHIVE. <a href="platform.html#other-objects">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">AI models</span><h3>One layer, not the whole checkpoint</h3></div>
+        <p>A <code>.safetensors</code> file is parsed and every tensor stored and tiered on its own, so you can fetch a single layer without reading the rest. <a href="platform.html#models">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">DNA-inspired archive</span><h3>Encrypted first, then A/C/G/T</h3></div>
+        <p>The ARCHIVE tier seals data with AES-256-GCM, then writes it as base letters, with error correction and a corruption simulator. A software simulation — no physical DNA. <a href="platform.html#tiers">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Databases and search</span><h3>Unlimited, isolated, searchable</h3></div>
+        <p>Create as many databases as you like, add typed tables, insert and browse — and <code>find</code> across every database and document at once. <a href="platform.html#multi-db">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Import</span><h3>Bring a design, a CSV, a script</h3></div>
+        <p>Attach a Markdown design document, CSV, SQL script, ER diagram or an MDC export. A SQL script is parsed, never run; nothing is written unless the whole file is valid, and nothing is overwritten. <a href="platform.html#import-export">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Export</span><h3>Take it out in the format you need</h3></div>
+        <p>CSV, SQL, Excel, a design document with an ER diagram, or an MDC export file another instance can import. Exports are plain files — the sealing protects data inside MDC, not what you download. <a href="platform.html#import-export">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Schema design</span><h3>Describe the tables, confirm, done</h3></div>
+        <p>Say <code>create database shop with customers(name, email), orders(total decimal)</code> or paste an ER diagram. MDC shows the design and creates it only when you reply yes. <a href="platform.html#import-export">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Agent state streams</span><h3>Event sourcing, rebuilt as of any time</h3></div>
+        <p>An AI agent's state kept as a base plus timestamped events instead of an overwritten value, then rebuilt exactly as it was at any moment (model weights stay in the object store). Every record, including its times, is sealed per stream; a tampered or missing event is detected. <a href="platform.html#streams">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Deleting</span><h3>Permanent, so it asks first</h3></div>
+        <p>Drop a database or table, delete a row or stream. MDC says what would be lost and waits — a database needs its name typed — and anything but a yes cancels. The default database is protected. <a href="platform.html#deleting">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Storage Explorer</span><h3>A browser app with a chat panel</h3></div>
+        <p>Browse by type, tier or database; preview, archive or delete objects; and chat — import with a paperclip, export with a download button. <a href="platform.html#explorer">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">API and access</span><h3>Bearer tokens and four roles</h3></div>
+        <p>A REST API for your own UI or NLU (RASA included): every route needs a token, and its role — viewer, editor, db_admin, admin — decides what it may do. <a href="platform.html#security">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Deployment</span><h3>Docker and Railway</h3></div>
+        <p>A Dockerfile and Railway config with a health check and a persistent volume; the deployed Explorer asks for the API token. <a href="platform.html#deployment">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+    </div>
+  </section>
+
   <section id="features">
     <div class="section-head">
       <h2>What it actually does</h2>
-      <span class="num">02 — FEATURES</span>
+      <span class="num">03 — FEATURES</span>
     </div>
     <div class="feature-rows">
       <div class="frow">
@@ -379,7 +444,7 @@
   <section id="platforms">
     <div class="section-head">
       <h2>Get a build</h2>
-      <span class="num">03 — PLATFORMS</span>
+      <span class="num">04 — PLATFORMS</span>
     </div>
     <table class="platform-table">
       <thead>
@@ -460,7 +525,7 @@
   <section id="quickstart">
     <div class="section-head">
       <h2>Five functions. That's the whole API.</h2>
-      <span class="num">04 — QUICKSTART</span>
+      <span class="num">05 — QUICKSTART</span>
     </div>
     <div class="code-tabs">
       <button class="active" data-lang="rust">Rust</button>
@@ -508,7 +573,7 @@ mdc_lite_close(store)</pre></div>
   <section id="security">
     <div class="section-head">
       <h2>On "quantum encryption"</h2>
-      <span class="num">05 — SECURITY</span>
+      <span class="num">06 — SECURITY</span>
     </div>
     <div class="security-grid">
       <div class="security-cell">
