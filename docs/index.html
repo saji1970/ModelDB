@@ -2,42 +2,62 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>mdc-lite — encrypted key-value store for mobile &amp; wearables</title>
+<title>ModelDB — mdc-lite and MDC Platform</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A 348 KB embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS apps. XChaCha20-Poly1305 encryption plus DNA-encoded storage, a 5-function C ABI, real cross-platform builds. Part of ModelDB, which also includes MDC Platform, a conversational data server.">
-<meta name="keywords" content="embedded database, encrypted key-value store, mobile database, iOS storage, Android storage, watchOS, Wear OS, Rust, XChaCha20-Poly1305, encryption, offline-first storage">
+<meta name="description" content="ModelDB is two encrypted-storage products: mdc-lite, a 348 KB embeddable key-value store for iOS, watchOS, Android and Wear OS apps, and MDC Platform, a conversational data server for AI models, documents and database tables. Compare them, read each one's details and open its documentation.">
+<meta name="keywords" content="ModelDB, mdc-lite, MDC Platform, embedded database, encrypted key-value store, conversational database, AI model storage, event sourcing, DNA-inspired storage, XChaCha20-Poly1305, AES-256-GCM">
 <meta name="author" content="Saji Pillai">
 <link rel="canonical" href="https://saji1970.github.io/ModelDB/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='16' fill='%2314161b'/%3E%3Ctext x='50' y='68' font-family='monospace' font-size='58' font-weight='700' fill='%23b23a2e' text-anchor='middle'%3E%C2%B7%3C/text%3E%3C/svg%3E">
 
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="mdc-lite">
-<meta property="og:title" content="mdc-lite — an encrypted store small enough to disappear into your app">
-<meta property="og:description" content="A 348 KB embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS apps. XChaCha20-Poly1305 encryption plus DNA-encoded storage, a 5-function C ABI, real cross-platform builds.">
+<meta property="og:site_name" content="ModelDB">
+<meta property="og:title" content="ModelDB — mdc-lite and MDC Platform">
+<meta property="og:description" content="Two encrypted-storage products: mdc-lite, an embeddable 348 KB key-value store for mobile and wearables, and MDC Platform, a conversational data server for AI models, documents and tables.">
 <meta property="og:url" content="https://saji1970.github.io/ModelDB/">
 <meta property="og:image" content="https://saji1970.github.io/ModelDB/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="mdc-lite: an encrypted store small enough to disappear into your app">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="mdc-lite — an encrypted store small enough to disappear into your app">
-<meta name="twitter:description" content="348 KB, XChaCha20-Poly1305 encryption plus DNA-encoded storage, real cross-platform builds for iOS, watchOS, Android, and Wear OS.">
+<meta name="twitter:title" content="ModelDB — mdc-lite and MDC Platform">
+<meta name="twitter:description" content="An embeddable encrypted store for apps, and a conversational data server. Compare, read the details, open the docs.">
 <meta name="twitter:image" content="https://saji1970.github.io/ModelDB/og-image.png">
 
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareSourceCode",
-  "name": "mdc-lite",
-  "description": "A 348 KB embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS apps, with DNA-encoded on-disk storage.",
-  "codeRepository": "https://github.com/saji1970/ModelDB/tree/main/mdc-lite",
-  "programmingLanguage": "Rust",
-  "license": "https://github.com/saji1970/ModelDB/blob/main/mdc-lite/LICENSE",
-  "operatingSystem": "iOS, watchOS, Android, Wear OS",
-  "applicationCategory": "DeveloperApplication",
-  "softwareVersion": "1.2.0",
-  "author": { "@type": "Person", "name": "Saji Pillai" },
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  "@type": "ItemList",
+  "name": "ModelDB",
+  "itemListElement": [
+    {
+      "@type": "ListItem", "position": 1,
+      "item": {
+        "@type": "SoftwareSourceCode",
+        "name": "mdc-lite",
+        "description": "A 348 KB embeddable encrypted key-value store for iOS, watchOS, Android, and Wear OS apps, with DNA-encoded on-disk storage.",
+        "url": "https://saji1970.github.io/ModelDB/docs.html",
+        "codeRepository": "https://github.com/saji1970/ModelDB/tree/main/mdc-lite",
+        "programmingLanguage": "Rust",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "softwareVersion": "1.2.0",
+        "author": { "@type": "Person", "name": "Saji Pillai" }
+      }
+    },
+    {
+      "@type": "ListItem", "position": 2,
+      "item": {
+        "@type": "SoftwareSourceCode",
+        "name": "MDC Platform",
+        "description": "A conversational data server: store AI models, images, documents and database tables together and work with them in plain sentences, through a browser app or a REST API.",
+        "url": "https://saji1970.github.io/ModelDB/platform.html",
+        "codeRepository": "https://github.com/saji1970/ModelDB/tree/main/mdc",
+        "programmingLanguage": "Python",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "author": { "@type": "Person", "name": "Saji Pillai" }
+      }
+    }
+  ]
 }
 </script>
 
@@ -151,19 +171,53 @@
   #topbar nav a { color: var(--text-dim); text-decoration: none; }
   #topbar nav a:hover { color: var(--text); }
 
+  /* ---------- product cards (hero) ---------- */
+  .product-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 8px; }
+  .pcard { display: flex; flex-direction: column; gap: 14px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px; padding: 26px; }
+  .pcard .pname { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 1.1rem; letter-spacing: -0.01em; }
+  .pcard h2 { font-size: 1.35rem; font-weight: 500; line-height: 1.25; }
+  .pcard p { margin: 0; color: var(--text-dim); font-size: 15px; }
+  .pcard ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+  .pcard li { font-family: "JetBrains Mono", monospace; font-size: 11.5px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 3px; padding: 3px 8px; }
+  .pcard .cta-row { margin: auto 0 0; padding-top: 6px; }
+
+  /* ---------- product sections ---------- */
+  .product-head { margin-bottom: 8px; }
+  .product-head h2 { font-size: 2.2rem; }
+  .product-head .kicker { font-family: "JetBrains Mono", monospace; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--amber); margin-bottom: 10px; }
+  .product-head .lede { font-size: 1.08rem; color: var(--text-dim); max-width: 62ch; margin: 14px 0 22px; }
+  .sub { padding-top: 56px; }
+  .sub > h3 { font-size: 1.45rem; margin-bottom: 22px; }
+  .sub > .section-lead { color: var(--text-dim); max-width: 64ch; margin: -8px 0 22px; }
+  .jump { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; margin: 0 0 4px; }
+  .jump a { color: var(--text-dim); text-decoration-color: var(--border); }
+  .jump a:hover { color: var(--text); }
+
+  /* ---------- documentation hub ---------- */
+  .doc-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .doc-col { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px; padding: 26px; }
+  .doc-col h3 { font-size: 1.25rem; margin-bottom: 4px; }
+  .doc-col .sub-line { color: var(--text-dim); font-size: 14px; margin: 0 0 14px; }
+  .doc-col ul { list-style: none; margin: 0; padding: 0; }
+  .doc-col li { padding: 9px 0; border-top: 1px solid var(--border); font-size: 14.5px; display: flex; justify-content: space-between; gap: 14px; }
+  .doc-col li:first-child { border-top: none; }
+  .doc-col li span { color: var(--text-dim); font-size: 13.5px; text-align: right; }
+  .doc-col li a { font-weight: 500; }
+  .doc-more { margin-top: 18px; color: var(--text-dim); font-size: 14.5px; }
+
   /* ---------- hero ---------- */
   #hero { padding: 76px 0 40px; }
   .eyebrow {
-    display: inline-flex; align-items: center; gap: 8px;
+    display: inline-block; line-height: 1.5;
     font-family: "JetBrains Mono", monospace; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--text-dim); border: 1px solid var(--border); border-radius: 3px; padding: 5px 10px;
     margin-bottom: 22px;
   }
   .eyebrow b { color: var(--amber); font-weight: 700; }
-  #hero h1 { font-size: clamp(2.4rem, 4.6vw, 3.6rem); line-height: 1.08; max-width: 15ch; }
+  #hero h1 { font-size: clamp(2.4rem, 4.6vw, 3.6rem); line-height: 1.08; max-width: 18ch; }
   #hero h1 em { font-style: italic; color: var(--accent); }
   #hero .lede { font-size: 1.15rem; color: var(--text-dim); max-width: 56ch; margin: 22px 0 34px; }
-  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 56px; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 40px; }
   .btn {
     font-family: "Public Sans", sans-serif; font-weight: 600; font-size: 14.5px;
     padding: 12px 20px; border-radius: 3px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
@@ -257,9 +311,14 @@
 
   @media (max-width: 720px) {
     #topbar nav { display: none; }
+    .product-cards, .doc-cols { grid-template-columns: 1fr; }
+    .product-head h2 { font-size: 1.8rem; }
+    .doc-col li { flex-direction: column; gap: 2px; }
+    .doc-col li span { text-align: left; }
     .frow { grid-template-columns: 1fr; gap: 6px; }
     .security-grid { grid-template-columns: 1fr; }
     .compare-table, .compare-table thead, .compare-table tbody, .compare-table tr, .compare-table th, .compare-table td { display: block; width: auto; padding-left: 0; }
+    .compare-table th:first-child, .compare-table td:first-child { width: auto; }
     .compare-table thead { display: none; }
     .compare-table tr { padding: 14px 0; border-bottom: 1px solid var(--border); }
     .compare-table td { border-bottom: none; padding: 2px 0; }
@@ -272,60 +331,62 @@
 <body>
 
 <div id="topbar">
-  <div class="brand">mdc<span class="dot">·</span>lite</div>
+  <a class="brand" href="#top" style="text-decoration:none;color:inherit;">Model<span class="dot">·</span>DB</a>
   <nav>
-    <a href="#products">Products</a>
-    <a href="#platform">MDC Platform</a>
-    <a href="#features">Features</a>
-    <a href="#platforms">Platforms</a>
-    <a href="#quickstart">Quickstart</a>
-    <a href="docs.html">Docs</a>
+    <a href="#compare">Compare</a>
+    <a href="#mdc-lite">mdc-lite</a>
+    <a href="#mdc-platform">MDC Platform</a>
+    <a href="#documentation">Documentation</a>
+    <a href="docs.html">mdc-lite docs</a>
     <a href="platform.html">Platform docs</a>
   </nav>
 </div>
 
-<div class="wrap">
+<div class="wrap" id="top">
 
   <section id="hero" style="border-top: none;">
-    <div class="eyebrow">v1.2.0 &nbsp;·&nbsp; <b>348 KB</b> stripped &nbsp;·&nbsp; Apache 2.0</div>
-    <h1>An encrypted store small enough to <em>disappear</em> into your app.</h1>
+    <div class="eyebrow">ModelDB &nbsp;·&nbsp; <b>two products</b></div>
+    <h1>Encrypted storage for the app in your pocket and the server behind it.</h1>
     <p class="lede">
-      mdc-lite is a key-value store built for the places a server can't
-      reach — a watch face, a phone app, a background service — with
-      every value and every key name sealed under XChaCha20-Poly1305
-      before it ever touches disk. No runtime. No dependencies to
-      speak of. Nothing readable outside the app that wrote it.
+      ModelDB is two separate products that share an idea, not code. One lives inside
+      a mobile or wearable app and keeps its data sealed on the device. The other is a
+      server you run: it stores AI models, documents and tables, and you work with them
+      in plain sentences. Pick one, or use both.
     </p>
-    <div class="cta-row">
-      <a class="btn btn-primary" href="#platforms">Get a build</a>
-      <a class="btn btn-ghost" href="docs.html">Read the docs</a>
-      <a class="btn btn-ghost" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite">Source</a>
-      <a class="btn btn-ghost" href="#platform">MDC Platform</a>
-    </div>
 
-    <div id="byte-diagram">
-      <div class="diagram-label">// what one entry looks like on disk</div>
-      <div class="bytes">
-        <div class="seg nonce">NONCE · 24B</div>
-        <div class="seg cipher">CIPHERTEXT</div>
-        <div class="seg tag">TAG · 16B</div>
+    <div class="product-cards">
+      <div class="pcard">
+        <div class="pname">mdc-lite</div>
+        <h2>An encrypted key-value store that disappears into your app</h2>
+        <p>Five functions linked into your binary. Every value and every key name is sealed before it touches disk, then written as DNA-style A/C/G/T text. No server, no network.</p>
+        <ul><li>Rust + C ABI</li><li>348 KB</li><li>iOS · watchOS · Android · Wear OS</li><li>v1.2.0</li></ul>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#mdc-lite">Details ↓</a>
+          <a class="btn btn-ghost" href="docs.html">Documentation →</a>
+        </div>
       </div>
-      <div class="byte-keys">
-        <span><b>random per write</b> — no counter to persist, no reuse risk</span>
-        <span><b>authenticated</b> — tampering fails the read, never silently returns</span>
+      <div class="pcard">
+        <div class="pname">MDC Platform</div>
+        <h2>A conversational data server for models, documents and tables</h2>
+        <p>Store AI models, images, documents and database tables together; import, export, archive and ask in plain sentences, in a browser app or over a token-gated REST API.</p>
+        <ul><li>Python</li><li>Browser app + REST API</li><li>Docker · Railway</li><li>Event-sourced agent state</li></ul>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#mdc-platform">Details ↓</a>
+          <a class="btn btn-ghost" href="platform.html">Documentation →</a>
+        </div>
       </div>
     </div>
   </section>
 
-  <section id="products">
+  <section id="compare">
     <div class="section-head">
-      <h2>Two products, one project</h2>
-      <span class="num">01 — WHICH ONE</span>
+      <h2>Which one do you need?</h2>
+      <span class="num">COMPARE</span>
     </div>
-    <p style="color:var(--text-dim); max-width:64ch; margin-bottom:24px;">This page is about <b class="mono" style="color:var(--text);">mdc-lite</b>. It has a sibling, the <a href="platform.html">MDC Platform</a> — a separate, Python server-side product in the same repo. They solve different problems and don't share code.</p>
-    <table class="compare-table" style="margin-bottom:20px;">
+    <p style="color:var(--text-dim); max-width:64ch; margin-bottom:24px;">They solve different problems and don't share code. mdc-lite is a library you link into an app; MDC Platform is a server you run. Both seal what they store.</p>
+    <table class="compare-table">
       <thead>
-        <tr><th></th><th>mdc-lite <span style="color:var(--accent); font-weight:400;">— this page</span></th><th>MDC Platform</th></tr>
+        <tr><th></th><th>mdc-lite</th><th>MDC Platform</th></tr>
       </thead>
       <tbody>
         <tr><td class="plat-name">What it is</td><td class="size-cell" data-label="mdc-lite">An embeddable library, linked into your app's binary</td><td class="size-cell" data-label="MDC Platform">A server you run and talk to</td></tr>
@@ -337,82 +398,43 @@
         <tr><td class="plat-name">DNA-inspired encoding</td><td class="size-cell" data-label="mdc-lite">Yes — every entry is stored as an encrypted ACGT sequence</td><td class="size-cell" data-label="MDC Platform">Yes — the archive tier, same encrypt-then-encode model</td></tr>
         <tr><td class="plat-name">External API access</td><td class="size-cell" data-label="mdc-lite">N/A — no network surface</td><td class="size-cell" data-label="MDC Platform">Bearer-token REST API with four roles (viewer to admin), for custom apps and NLU integrations</td></tr>
         <tr><td class="plat-name">Data tools</td><td class="size-cell" data-label="mdc-lite">None — a key-value store</td><td class="size-cell" data-label="MDC Platform">Import and export (CSV, SQL, Excel, ER diagram), schema from a prompt, event-sourced agent state, confirmed deletes</td></tr>
+        <tr><td class="plat-name">Written in</td><td class="size-cell" data-label="mdc-lite">Rust (C header for Swift, Kotlin and others)</td><td class="size-cell" data-label="MDC Platform">Python (FastAPI, DuckDB)</td></tr>
+        <tr><td class="plat-name">Choose it when</td><td class="size-cell" data-label="mdc-lite">Your app needs private on-device storage and no server is involved</td><td class="size-cell" data-label="MDC Platform">Several people or services need to store, ask about and share data behind an API</td></tr>
+        <tr><td class="plat-name">Documentation</td><td class="size-cell" data-label="mdc-lite"><a href="docs.html">mdc-lite docs →</a></td><td class="size-cell" data-label="MDC Platform"><a href="platform.html">MDC Platform docs →</a></td></tr>
       </tbody>
     </table>
     <div class="callout"><strong>Is either one's data actually stored as a DNA molecule?</strong>No. Both encode data as A/C/G/T <em>text</em> — mdc-lite in its on-disk files, MDC Platform in its archive tier — but it's always encrypted first, then represented as base-letter characters in an ordinary file or database. A software simulation, not a physical molecule. No synthesis, no sequencing, no wet lab, anywhere in either codebase.</div>
-    <div class="cta-row" style="margin-bottom:0;">
-      <a class="btn btn-ghost" href="platform.html">Explore MDC Platform →</a>
-      <a class="btn btn-ghost" href="#features">Continue reading about mdc-lite ↓</a>
-    </div>
   </section>
 
-  <section id="platform">
-    <div class="section-head">
-      <h2>What MDC Platform does</h2>
-      <span class="num">02 — PLATFORM</span>
+  <section id="mdc-lite">
+    <div class="product-head">
+      <div class="kicker">Product 1 of 2</div>
+      <h2>mdc-lite</h2>
+      <p class="lede">A key-value store built for the places a server can't reach: a watch face, a phone app, a background service. Every value and every key name is sealed under XChaCha20-Poly1305 before it ever touches disk. No runtime, nothing readable outside the app that wrote it.</p>
+      <div class="cta-row" style="margin-bottom:18px;">
+        <a class="btn btn-primary" href="docs.html">Read the mdc-lite docs</a>
+        <a class="btn btn-ghost" href="#lite-builds">Get a build</a>
+        <a class="btn btn-ghost" href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite">Source</a>
+      </div>
+      <p class="jump"><span class="mono" style="color:var(--text-dim)">On this page:</span> <a href="#lite-features">What it does</a> <a href="#lite-builds">Builds</a> <a href="#lite-quickstart">Quickstart</a></p>
+      <p class="jump" style="margin-top:6px;"><span class="mono" style="color:var(--text-dim)">In the docs:</span> <a href="docs.html#installation">Installation</a> <a href="docs.html#api">API reference</a> <a href="docs.html#format">On-disk format</a> <a href="docs.html#security">Security model</a> <a href="docs.html#limitations">What this isn't</a></p>
     </div>
-    <p style="color:var(--text-dim); max-width:64ch; margin-bottom:24px;">The server side of the project: store AI models, images, documents and database tables together and work with them in plain sentences. <a href="platform.html">Full documentation →</a></p>
-    <div class="feature-rows">
-      <div class="frow">
-        <div><span class="tag">Plain sentences</span><h3>Ask, don't query</h3></div>
-        <p>Create, read, update, delete and analyse by asking. Ambiguous words are clarified, deletes are confirmed, and no sentence ever becomes SQL — a deterministic validator, not the language model, decides what reaches storage. <a href="platform.html#no-sql">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">Object store</span><h3>Any bytes, classified by content</h3></div>
-        <p>AI models, images, documents, logs, tensors and tables are recognised from their content (not the filename) and tiered HOT / WARM / COLD / ARCHIVE. <a href="platform.html#other-objects">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">AI models</span><h3>One layer, not the whole checkpoint</h3></div>
-        <p>A <code>.safetensors</code> file is parsed and every tensor stored and tiered on its own, so you can fetch a single layer without reading the rest. <a href="platform.html#models">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">DNA-inspired archive</span><h3>Encrypted first, then A/C/G/T</h3></div>
-        <p>The ARCHIVE tier seals data with AES-256-GCM, then writes it as base letters, with error correction and a corruption simulator. A software simulation — no physical DNA. <a href="platform.html#tiers">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">Databases and search</span><h3>Unlimited, isolated, searchable</h3></div>
-        <p>Create as many databases as you like, add typed tables, insert and browse — and <code>find</code> across every database and document at once. <a href="platform.html#multi-db">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">Import</span><h3>Bring a design, a CSV, a script</h3></div>
-        <p>Attach a Markdown design document, CSV, SQL script, ER diagram or an MDC export. A SQL script is parsed, never run; nothing is written unless the whole file is valid, and nothing is overwritten. <a href="platform.html#import-export">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">Export</span><h3>Take it out in the format you need</h3></div>
-        <p>CSV, SQL, Excel, a design document with an ER diagram, or an MDC export file another instance can import. Exports are plain files — the sealing protects data inside MDC, not what you download. <a href="platform.html#import-export">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">Schema design</span><h3>Describe the tables, confirm, done</h3></div>
-        <p>Say <code>create database shop with customers(name, email), orders(total decimal)</code> or paste an ER diagram. MDC shows the design and creates it only when you reply yes. <a href="platform.html#import-export">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">Agent state streams</span><h3>Event sourcing, rebuilt as of any time</h3></div>
-        <p>An AI agent's state kept as a base plus timestamped events instead of an overwritten value, then rebuilt exactly as it was at any moment (model weights stay in the object store). Every record, including its times, is sealed per stream; a tampered or missing event is detected. <a href="platform.html#streams">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">Deleting</span><h3>Permanent, so it asks first</h3></div>
-        <p>Drop a database or table, delete a row or stream. MDC says what would be lost and waits — a database needs its name typed — and anything but a yes cancels. The default database is protected. <a href="platform.html#deleting">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">Storage Explorer</span><h3>A browser app with a chat panel</h3></div>
-        <p>Browse by type, tier or database; preview, archive or delete objects; and chat — import with a paperclip, export with a download button. <a href="platform.html#explorer">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">API and access</span><h3>Bearer tokens and four roles</h3></div>
-        <p>A REST API for your own UI or NLU (RASA included): every route needs a token, and its role — viewer, editor, db_admin, admin — decides what it may do. <a href="platform.html#security">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-      <div class="frow">
-        <div><span class="tag">Deployment</span><h3>Docker and Railway</h3></div>
-        <p>A Dockerfile and Railway config with a health check and a persistent volume; the deployed Explorer asks for the API token. <a href="platform.html#deployment">Read&nbsp;more&nbsp;→</a></p>
-      </div>
-    </div>
-  </section>
 
-  <section id="features">
-    <div class="section-head">
-      <h2>What it actually does</h2>
-      <span class="num">03 — FEATURES</span>
+    <div id="byte-diagram" style="margin-top:36px;">
+      <div class="diagram-label">// what one entry looks like on disk</div>
+      <div class="bytes">
+        <div class="seg nonce">NONCE · 24B</div>
+        <div class="seg cipher">CIPHERTEXT</div>
+        <div class="seg tag">TAG · 16B</div>
+      </div>
+      <div class="byte-keys">
+        <span><b>random per write</b> — no counter to persist, no reuse risk</span>
+        <span><b>authenticated</b> — tampering fails the read, never silently returns</span>
+      </div>
     </div>
+
+    <div class="sub" id="lite-features">
+      <h3>What it does</h3>
     <div class="feature-rows">
       <div class="frow">
         <div><span class="tag">Encryption</span><h3>Sealed keys, not just sealed values</h3></div>
@@ -439,13 +461,10 @@
         <p>Every encrypted entry is DNA-encoded (2 bits per base — <code>00→A 01→C 10→G 11→T</code>) before it's written, the same encoding <a href="platform.html#tiers">MDC Platform's archive tier</a> uses. It's ciphertext under the base letters, never plaintext — the mapping is public, encryption is what actually protects it.</p>
       </div>
     </div>
-  </section>
-
-  <section id="platforms">
-    <div class="section-head">
-      <h2>Get a build</h2>
-      <span class="num">04 — PLATFORMS</span>
     </div>
+
+    <div class="sub" id="lite-builds">
+      <h3>Get a build</h3>
     <table class="platform-table">
       <thead>
         <tr><th>Platform</th><th>Artifact</th><th>Size</th><th>Status</th><th></th></tr>
@@ -520,13 +539,10 @@
       full verification story, artifact by artifact, is in
       <a href="https://github.com/saji1970/ModelDB/blob/main/mdc-lite/dist/BUILD_INFO.md">BUILD_INFO.md</a>.
     </p>
-  </section>
-
-  <section id="quickstart">
-    <div class="section-head">
-      <h2>Five functions. That's the whole API.</h2>
-      <span class="num">05 — QUICKSTART</span>
     </div>
+
+    <div class="sub" id="lite-quickstart">
+      <h3>Five functions. That's the whole API.</h3>
     <div class="code-tabs">
       <button class="active" data-lang="rust">Rust</button>
       <button data-lang="c">C</button>
@@ -568,12 +584,153 @@ mdc_lite_free_buffer(outPtr, outLen)
 
 mdc_lite_close(store)</pre></div>
     </div>
+    </div>
+  </section>
+
+  <section id="mdc-platform">
+    <div class="product-head">
+      <div class="kicker">Product 2 of 2</div>
+      <h2>MDC Platform</h2>
+      <p class="lede">The server side of the project. Store AI models, images, documents and database tables together and work with them in plain sentences. No sentence ever becomes SQL: an LLM may propose what you mean, but a deterministic validator decides what reaches storage.</p>
+      <div class="cta-row" style="margin-bottom:18px;">
+        <a class="btn btn-primary" href="platform.html">Read the Platform docs</a>
+        <a class="btn btn-ghost" href="#platform-run">Run it</a>
+        <a class="btn btn-ghost" href="https://github.com/saji1970/ModelDB/tree/main/mdc">Source</a>
+      </div>
+      <p class="jump"><span class="mono" style="color:var(--text-dim)">On this page:</span> <a href="#platform-features">What it does</a> <a href="#platform-run">Run it</a></p>
+      <p class="jump" style="margin-top:6px;"><span class="mono" style="color:var(--text-dim)">In the docs:</span> <a href="platform.html#installation">Installation</a> <a href="platform.html#concepts">Core concepts</a> <a href="platform.html#streams">Agent state streams</a> <a href="platform.html#encryption">Encryption keys</a> <a href="platform.html#rest-api">REST API</a> <a href="platform.html#deployment">Deployment</a></p>
+    </div>
+
+    <div class="sub" id="platform-features">
+      <h3>What it does</h3>
+    <div class="feature-rows">
+      <div class="frow">
+        <div><span class="tag">Plain sentences</span><h3>Ask, don't query</h3></div>
+        <p>Create, read, update, delete and analyse by asking. Ambiguous words are clarified, deletes are confirmed, and no sentence ever becomes SQL — a deterministic validator, not the language model, decides what reaches storage. <a href="platform.html#no-sql">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Object store</span><h3>Any bytes, classified by content</h3></div>
+        <p>AI models, images, documents, logs, tensors and tables are recognised from their content (not the filename) and tiered HOT / WARM / COLD / ARCHIVE. <a href="platform.html#other-objects">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">AI models</span><h3>One layer, not the whole checkpoint</h3></div>
+        <p>A <code>.safetensors</code> file is parsed and every tensor stored and tiered on its own, so you can fetch a single layer without reading the rest. <a href="platform.html#models">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">DNA-inspired archive</span><h3>Encrypted first, then A/C/G/T</h3></div>
+        <p>The ARCHIVE tier seals data with AES-256-GCM, then writes it as base letters, with error correction and a corruption simulator. A software simulation — no physical DNA. <a href="platform.html#tiers">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Databases and search</span><h3>Unlimited, isolated, searchable</h3></div>
+        <p>Create as many databases as you like, add typed tables, insert and browse — and <code>find</code> across every database and document at once. <a href="platform.html#multi-db">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Import</span><h3>Bring a design, a CSV, a script</h3></div>
+        <p>Attach a Markdown design document, CSV, SQL script, ER diagram or an MDC export. A SQL script is parsed, never run; nothing is written unless the whole file is valid, and nothing is overwritten. <a href="platform.html#import-export">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Export</span><h3>Take it out in the format you need</h3></div>
+        <p>CSV, SQL, Excel, a design document with an ER diagram, or an MDC export file another instance can import. Exports are plain files — the sealing protects data inside MDC, not what you download. <a href="platform.html#import-export">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Schema design</span><h3>Describe the tables, confirm, done</h3></div>
+        <p>Say <code>create database shop with customers(name, email), orders(total decimal)</code> or paste an ER diagram. MDC shows the design and creates it only when you reply yes. <a href="platform.html#import-export">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Agent state streams</span><h3>Event sourcing, rebuilt as of any time</h3></div>
+        <p>An AI agent's state kept as a base plus timestamped events instead of an overwritten value, then rebuilt exactly as it was at any moment (model weights stay in the object store). Every record, including its times, is sealed per stream; a tampered or missing event is detected. <a href="platform.html#streams">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Deleting</span><h3>Permanent, so it asks first</h3></div>
+        <p>Drop a database or table, delete a row or stream. MDC says what would be lost and waits — a database needs its name typed — and anything but a yes cancels. The default database is protected. <a href="platform.html#deleting">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Storage Explorer</span><h3>A browser app with a chat panel</h3></div>
+        <p>Browse by type, tier or database; preview, archive or delete objects; and chat — import with a paperclip, export with a download button. <a href="platform.html#explorer">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">API and access</span><h3>Bearer tokens and four roles</h3></div>
+        <p>A REST API for your own UI or NLU (RASA included): every route needs a token, and its role — viewer, editor, db_admin, admin — decides what it may do. <a href="platform.html#security">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
+        <div><span class="tag">Deployment</span><h3>Docker and Railway</h3></div>
+        <p>A Dockerfile and Railway config with a health check and a persistent volume; the deployed Explorer asks for the API token. <a href="platform.html#deployment">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+    </div>
+    </div>
+
+    <div class="sub" id="platform-run">
+      <h3>Run it</h3>
+      <p class="section-lead">You need Python. This starts the browser app (Storage Explorer) and the REST API on your own machine; <a href="platform.html#installation">Installation</a> has the rest, and <a href="platform.html#deployment">Deployment</a> covers Docker and Railway.</p>
+      <div class="code-panel"><pre><span class="c1"># get it</span>
+git clone https://github.com/saji1970/ModelDB.git
+cd ModelDB/mdc
+python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+
+<span class="c1"># the browser app and REST API at http://127.0.0.1:8000</span>
+python -m mdc serve
+
+<span class="c1"># or the conversational shell</span>
+python -m mdc
+
+<span class="c1"># an API token for your own app or NLU</span>
+python -m mdc token issue my-integration --role editor</pre></div>
+      <p class="table-note">Then ask it things: <code>create database shop with customers(name, email)</code>, <code>list models</code>, <code>find widget under 20000</code>, <code>create stream agent-1 with mood=calm</code>. <a href="platform.html#chat-commands">Every chat command →</a></p>
+    </div>
+  </section>
+
+  <section id="documentation">
+    <div class="section-head">
+      <h2>Documentation and links</h2>
+      <span class="num">DOCS</span>
+    </div>
+    <div class="doc-cols">
+      <div class="doc-col">
+        <h3>mdc-lite</h3>
+        <p class="sub-line">Embed it in an app.</p>
+        <ul>
+          <li><a href="docs.html">Documentation home</a><span>everything below, in one page</span></li>
+          <li><a href="docs.html#installation">Installation</a><span>per platform</span></li>
+          <li><a href="docs.html#quickstart">Quickstart</a><span>Rust, C, Swift</span></li>
+          <li><a href="docs.html#api">API reference</a><span>the five functions</span></li>
+          <li><a href="docs.html#format">On-disk format</a><span>what an entry looks like</span></li>
+          <li><a href="docs.html#security">Security model</a><span>what is and isn't covered</span></li>
+          <li><a href="docs.html#custody">Platform key custody</a><span>Keychain, Keystore</span></li>
+          <li><a href="docs.html#limitations">What this isn't</a><span>limits</span></li>
+          <li><a href="https://github.com/saji1970/ModelDB/blob/main/mdc-lite/README.md">README</a><span>in the repository</span></li>
+          <li><a href="https://github.com/saji1970/ModelDB/blob/main/mdc-lite/dist/BUILD_INFO.md">Build manifest</a><span>what was verified</span></li>
+          <li><a href="https://github.com/saji1970/ModelDB/releases/tag/mdc-lite-v1.2.0">Release v1.2.0</a><span>builds and checksums</span></li>
+        </ul>
+      </div>
+      <div class="doc-col">
+        <h3>MDC Platform</h3>
+        <p class="sub-line">Run it as a server.</p>
+        <ul>
+          <li><a href="platform.html">Documentation home</a><span>everything below, in one page</span></li>
+          <li><a href="platform.html#installation">Installation</a><span>run it locally</span></li>
+          <li><a href="platform.html#concepts">Core concepts</a><span>objects, databases, state and events</span></li>
+          <li><a href="platform.html#models">AI models &amp; objects</a><span>tensors, tiers</span></li>
+          <li><a href="platform.html#multi-db">Databases, tables, search</a><span>and import / export</span></li>
+          <li><a href="platform.html#streams">Agent state streams</a><span>event sourcing</span></li>
+          <li><a href="platform.html#deleting">Deleting things</a><span>confirmed drops</span></li>
+          <li><a href="platform.html#security">Security &amp; access</a><span>tokens and roles</span></li>
+          <li><a href="platform.html#encryption">Encryption keys</a><span>setup and rotation</span></li>
+          <li><a href="platform.html#deployment">Deployment</a><span>Docker, Railway</span></li>
+          <li><a href="platform.html#rest-api">REST API</a><span>every route</span></li>
+          <li><a href="platform.html#chat-commands">Chat commands</a><span>every sentence it understands</span></li>
+          <li><a href="https://github.com/saji1970/ModelDB/blob/main/mdc/README.md">README</a><span>in the repository</span></li>
+          <li><a href="https://github.com/saji1970/ModelDB/blob/main/mdc/docs/ARCHITECTURE.md">Architecture</a><span>how the pieces fit</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="doc-more">Both products: <a href="https://github.com/saji1970/ModelDB/blob/main/DNA-STORAGE-WHITEPAPER.md">the DNA-storage whitepaper</a> (what the DNA-inspired encoding is and isn't), and the <a href="https://github.com/saji1970/ModelDB">repository</a>.</p>
   </section>
 
   <section id="security">
     <div class="section-head">
       <h2>On "quantum encryption"</h2>
-      <span class="num">06 — SECURITY</span>
+      <span class="num">BOTH PRODUCTS</span>
     </div>
     <div class="security-grid">
       <div class="security-cell">
@@ -584,7 +741,7 @@ mdc_lite_close(store)</pre></div>
       <div class="security-cell">
         <span class="k">WHAT IT IS</span>
         <h3>256-bit symmetric, already enough</h3>
-        <p>Grover's algorithm only halves a symmetric key's effective strength — 256 bits stays enormous. Quantum computers threaten asymmetric crypto (RSA/ECC) instead, which this library doesn't use at all.</p>
+        <p>Grover's algorithm only halves a symmetric key's effective strength — 256 bits stays enormous. Quantum computers threaten asymmetric crypto (RSA/ECC) instead, which neither product uses to protect data.</p>
       </div>
       <div class="security-cell">
         <span class="k">A DIFFERENT QUESTION</span>
@@ -594,14 +751,14 @@ mdc_lite_close(store)</pre></div>
     </div>
   </section>
 
-
   <footer>
     <div class="footer-grid">
-      <div class="mono">mdc-lite · Apache License 2.0 · part of the <a href="https://github.com/saji1970/ModelDB" style="color:var(--text-dim)">MDC</a> project</div>
+      <div class="mono">ModelDB · Apache License 2.0 · <a href="https://github.com/saji1970/ModelDB" style="color:var(--text-dim)">github.com/saji1970/ModelDB</a></div>
       <nav>
-        <a href="docs.html">Documentation</a>
-        <a href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite">Source</a>
-        <a href="https://github.com/saji1970/ModelDB/blob/main/mdc-lite/dist/BUILD_INFO.md">Build manifest</a>
+        <a href="docs.html">mdc-lite docs</a>
+        <a href="platform.html">Platform docs</a>
+        <a href="https://github.com/saji1970/ModelDB/tree/main/mdc-lite">mdc-lite source</a>
+        <a href="https://github.com/saji1970/ModelDB/tree/main/mdc">Platform source</a>
       </nav>
     </div>
   </footer>
