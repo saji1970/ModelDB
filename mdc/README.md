@@ -276,6 +276,31 @@ database. Merchants CRUD/analytics natural language ("Show all merchants",
 original `default` database regardless of which database the session has
 switched to - see `conversation/interpreter.py`'s module docstring for why.
 
+## Agent state streams (event sourcing)
+
+A stream keeps an agent's state as a base snapshot plus an append-only log of
+timestamped changes, and rebuilds the state exactly as it was at any time:
+
+```
+> create stream agent-1 with mood=calm, goal=idle
+> update stream agent-1 set mood=busy
+> show stream agent-1 as of 15 minutes ago
+> show history of stream agent-1
+```
+
+REST: `POST /databases/{name}/streams/{stream}` (create), `.../events` (append),
+`GET .../streams/{stream}?at=<iso>|seq=<n>` (rebuild), `.../history`, list, delete.
+From Python: `DatabaseManager.events(name)` returns an `EventStore`.
+
+Every record, including the event times inside it, is sealed with AES-256-GCM
+under a per-stream key derived from the server's master key (`MDC_DNA_KEY` /
+`~/.mdc/dna.key`), and bound to its stream and position - so a copied, swapped,
+altered or deleted event is detected on read. What stays visible to someone with
+the database file: the stream id, record counts and sizes, and when each record
+was written. The API is token-gated by role, not per stream. How a change is
+encoded is a pluggable `StateCodec` (the built-in writes `set`/`unset` path
+operations); replay is always deterministic code. See `src/mdc/events/store.py`.
+
 ## Testing
 
 ```bash

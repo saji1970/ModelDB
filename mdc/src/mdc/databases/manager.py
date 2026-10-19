@@ -38,7 +38,9 @@ from pathlib import Path
 from mdc.api.service import ObjectService
 from mdc.databases.errors import DatabaseAlreadyExistsError, DatabaseNotFoundError, InvalidDatabaseNameError
 from mdc.engine.data_engine import MDCDataEngine
+from mdc.events import EventStore
 from mdc.schema.registry import SchemaRegistry
+from mdc.security.keys import load_or_create_dna_key
 from mdc.storage.duckdb_store import DuckDBStore
 from mdc.storage_intelligence.router import StorageRouter, build_default_router
 
@@ -62,8 +64,12 @@ class DatabaseHandle:
 
 
 class DatabaseManager:
-    def __init__(self, databases_dir: Path, default_store: DuckDBStore, default_registry: SchemaRegistry):
+    def __init__(self, databases_dir: Path, default_store: DuckDBStore, default_registry: SchemaRegistry, event_master_key: bytes | None = None):
         self.databases_dir = databases_dir
+        # Master key for sealed event streams. Loaded on first use, not at
+        # startup, so a deployment that never records a stream never touches it.
+        self._event_master_key = event_master_key
+        self._event_stores: dict[str, EventStore] = {}
         self.databases_dir.mkdir(parents=True, exist_ok=True)
         # Tables added to "default" at runtime are snapshotted to its sidecar
         # like any other database's; without reading it back here they were
@@ -117,6 +123,17 @@ class DatabaseManager:
         handle = _build_handle(name, store, registry)
         self._handles[name] = handle
         return handle
+
+    def events(self, name: str) -> EventStore:
+        """The event-sourced streams of database `name` - one EventStore per
+        database, shared by the REST API and chat so they use one lock."""
+        handle = self.get(name)
+        store = self._event_stores.get(name)
+        if store is None:
+            if self._event_master_key is None:
+                self._event_master_key = load_or_create_dna_key()
+            store = self._event_stores[name] = EventStore(handle.store, self._event_master_key)
+        return store
 
     def list_names(self) -> list[str]:
         on_disk = {p.stem for p in self.databases_dir.glob("*.duckdb")}

@@ -32,6 +32,7 @@ implies.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,14 @@ from mdc.conversation.db_interpreter import handle_database_command
 from mdc.conversation.state import StorageConversationState
 from mdc.databases.errors import DatabaseAlreadyExistsError, DatabaseNotFoundError, InvalidDatabaseNameError
 from mdc.databases.manager import DatabaseManager, DEFAULT_DATABASE
+from mdc.events import (
+    ConcurrencyError,
+    EventStoreError,
+    StateNotYetError,
+    StreamCorruptError,
+    StreamExistsError,
+    StreamNotFoundError,
+)
 from mdc.model.operation import CreateOperation, ReadOperation
 from mdc.models.errors import ModelNotFoundError, TensorNotFoundError
 from mdc.nlp.db_command import VALID_FIELD_TYPES, DatabaseCommand, DatabaseIntent
@@ -63,6 +72,22 @@ from mdc.storage_intelligence.strategy import StorageTier
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 _MAX_IMPORT_BYTES = 25 * 1024 * 1024
 _LOCAL_UI_TOKEN_NAME = "local-browser-ui"
+
+
+class CreateStreamRequest(BaseModel):
+    state: dict[str, Any]
+    note: str | None = None
+    at: datetime | None = None
+
+
+class AppendEventRequest(BaseModel):
+    # Exactly one of: the full new state (the server works out the change)
+    # or a ready-made codec payload.
+    state: dict[str, Any] | None = None
+    payload: Any = None
+    note: str | None = None
+    at: datetime | None = None
+    expected_seq: int | None = None
 
 
 class MoveRequest(BaseModel):
@@ -340,6 +365,82 @@ def create_app(manager: DatabaseManager, token_store: TokenStore | None = None) 
         if result.created_database:
             chat_engine.switch_session_database(session_id, result.database)
         return {"message": result.summary(), "database": result.database, "created_database": result.created_database}
+
+
+    def _events(name: str):
+        try:
+            return manager.events(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+
+    def _stream_http_error(exc: EventStoreError) -> HTTPException:
+        if isinstance(exc, (StreamNotFoundError, StateNotYetError)):
+            return HTTPException(status_code=404, detail=str(exc))
+        if isinstance(exc, (StreamExistsError, ConcurrencyError)):
+            return HTTPException(status_code=409, detail=str(exc))
+        if isinstance(exc, StreamCorruptError):
+            return HTTPException(status_code=500, detail=str(exc))
+        return HTTPException(status_code=422, detail=str(exc))
+
+    @router.get("/databases/{name}/streams", dependencies=[Depends(_require(Permission.READ))])
+    def list_streams(name: str) -> dict[str, Any]:
+        return {"database": name, "streams": _events(name).list_streams()}
+
+    @router.post("/databases/{name}/streams/{stream}", status_code=201, dependencies=[Depends(_require(Permission.WRITE))])
+    def create_stream(name: str, stream: str, body: CreateStreamRequest) -> dict[str, Any]:
+        """Start an event-sourced stream (agent state) with its base state.
+        Everything stored - state and timestamps - is sealed with a key
+        derived for this stream; see `events.store`."""
+        try:
+            view = _events(name).create_stream(stream, body.state, note=body.note, ts=body.at)
+        except EventStoreError as exc:
+            raise _stream_http_error(exc) from exc
+        return {"database": name, "stream": stream, "seq": view.seq, "ts": view.ts.isoformat()}
+
+    @router.post("/databases/{name}/streams/{stream}/events", status_code=201, dependencies=[Depends(_require(Permission.WRITE))])
+    def append_stream_event(name: str, stream: str, body: AppendEventRequest) -> dict[str, Any]:
+        """Record one change - append only, never an update in place. Send
+        the full new `state` (the change is worked out) or a codec `payload`;
+        `expected_seq` makes the write fail if someone else appended first."""
+        try:
+            event = _events(name).append(
+                stream, state=body.state, payload=body.payload, note=body.note, ts=body.at, expected_seq=body.expected_seq
+            )
+        except EventStoreError as exc:
+            raise _stream_http_error(exc) from exc
+        return {"database": name, "stream": stream, "seq": event.seq, "ts": event.ts.isoformat(), "payload": event.payload}
+
+    @router.get("/databases/{name}/streams/{stream}", dependencies=[Depends(_require(Permission.READ))])
+    def get_stream_state(name: str, stream: str, at: datetime | None = None, seq: int | None = None) -> dict[str, Any]:
+        """The state rebuilt as of time `at` (ISO 8601; no zone means UTC) or
+        just after event `seq`; with neither, the latest."""
+        try:
+            view = _events(name).state_at(stream, at=at, seq=seq)
+        except EventStoreError as exc:
+            raise _stream_http_error(exc) from exc
+        return {"database": name, "stream": stream, "state": view.state, "seq": view.seq, "ts": view.ts.isoformat()}
+
+    @router.get("/databases/{name}/streams/{stream}/history", dependencies=[Depends(_require(Permission.READ))])
+    def get_stream_history(name: str, stream: str, since: datetime | None = None, until: datetime | None = None, limit: int | None = None) -> dict[str, Any]:
+        try:
+            events = _events(name).history(stream, since=since, until=until, limit=limit)
+        except EventStoreError as exc:
+            raise _stream_http_error(exc) from exc
+        return {
+            "database": name,
+            "stream": stream,
+            "events": [{"seq": e.seq, "ts": e.ts.isoformat(), "kind": e.kind, "note": e.note, "payload": e.payload} for e in events],
+        }
+
+    @router.delete("/databases/{name}/streams/{stream}", status_code=204, dependencies=[Depends(_require(Permission.WRITE))])
+    def delete_stream(name: str, stream: str) -> Response:
+        try:
+            removed = _events(name).delete_stream(stream)
+        except EventStoreError as exc:
+            raise _stream_http_error(exc) from exc
+        if not removed:
+            raise HTTPException(status_code=404, detail=f'No stream named "{stream}".')
+        return Response(status_code=204)
 
     @router.get("/objects", dependencies=[Depends(_require(Permission.READ))])
     def list_objects(type: str | None = None, tier: str | None = None) -> dict[str, Any]:
