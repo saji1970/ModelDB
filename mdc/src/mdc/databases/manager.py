@@ -49,7 +49,9 @@ from mdc.events.store import list_streams_in
 from mdc.schema.registry import SchemaRegistry
 from mdc.security.keys import load_or_create_dna_key
 from mdc.storage.duckdb_store import DuckDBStore
+from mdc.dna.storage import ArchiveRotationReport
 from mdc.storage_intelligence.router import StorageRouter, build_default_router
+from mdc.storage_intelligence.strategy_types import StorageTier
 
 DEFAULT_DATABASE = "default"
 _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,62}$")
@@ -58,6 +60,12 @@ _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,62}$")
 def _validate_name(name: str) -> None:
     if not _NAME_RE.match(name):
         raise InvalidDatabaseNameError(name)
+
+
+@dataclass(frozen=True)
+class KeyRotation:
+    streams: RotationReport
+    archive: ArchiveRotationReport | None
 
 
 @dataclass
@@ -86,7 +94,7 @@ class DatabaseManager:
             saved = SchemaRegistry.from_dict(json.loads(sidecar.read_text()))
             for name in saved.list_collections():
                 default_registry.create_collection(name, saved.get_collection(name).fields)
-        self._handles: dict[str, DatabaseHandle] = {DEFAULT_DATABASE: _build_handle(DEFAULT_DATABASE, default_store, default_registry)}
+        self._handles: dict[str, DatabaseHandle] = {DEFAULT_DATABASE: _build_handle(DEFAULT_DATABASE, default_store, default_registry, event_master_key)}
 
     def _path_for(self, name: str) -> Path:
         return self.databases_dir / f"{name}.duckdb"
@@ -113,7 +121,7 @@ class DatabaseManager:
             raise DatabaseAlreadyExistsError(name)
         store = DuckDBStore(self._path_for(name))
         store.init_schema()
-        handle = _build_handle(name, store, SchemaRegistry())
+        handle = _build_handle(name, store, SchemaRegistry(), self._event_master_key)
         self._handles[name] = handle
         return handle
 
@@ -127,7 +135,7 @@ class DatabaseManager:
         store.init_schema()
         schema_path = self._schema_path_for(name)
         registry = SchemaRegistry.from_dict(json.loads(schema_path.read_text())) if schema_path.exists() else SchemaRegistry()
-        handle = _build_handle(name, store, registry)
+        handle = _build_handle(name, store, registry, self._event_master_key)
         self._handles[name] = handle
         return handle
 
@@ -184,16 +192,19 @@ class DatabaseManager:
             store = self._event_stores[name] = EventStore(handle.store, self._event_master_key)
         return store
 
-    def rotate_event_key(self, new_key: bytes) -> dict[str, RotationReport]:
-        """Re-seal the streams of every database under `new_key` (see
-        `EventStore.rotate_key`), then adopt it. Databases are done one at a
-        time; if one fails the rest are untouched and rerunning the same
-        rotation picks up where it stopped."""
+    def rotate_event_key(self, new_key: bytes) -> dict[str, KeyRotation]:
+        """Re-seal everything sealed under the master key - the event streams
+        and the persistent ARCHIVE tier of every database - under `new_key`,
+        then adopt it. Databases are done one at a time; if one fails the
+        rest are untouched and rerunning the same rotation picks up where it
+        stopped (a database already finished is recognized and skipped)."""
         if self._event_master_key is None:
             self._event_master_key = load_or_create_dna_key()
-        reports: dict[str, RotationReport] = {}
+        reports: dict[str, KeyRotation] = {}
         for name in self.list_names():
-            reports[name] = self.events(name).rotate_key(new_key)
+            streams = self.events(name).rotate_key(new_key)
+            archive = self.get(name).router.backends[StorageTier.ARCHIVE]
+            reports[name] = KeyRotation(streams=streams, archive=archive.rotate_key(new_key) if hasattr(archive, "rotate_key") else None)
         self._event_master_key = new_key
         return reports
 
@@ -202,8 +213,8 @@ class DatabaseManager:
         return sorted({DEFAULT_DATABASE} | on_disk | set(self._handles))
 
 
-def _build_handle(name: str, store: DuckDBStore, registry: SchemaRegistry) -> DatabaseHandle:
+def _build_handle(name: str, store: DuckDBStore, registry: SchemaRegistry, key: bytes | None = None) -> DatabaseHandle:
     engine = MDCDataEngine(store, registry)
-    router = build_default_router(store)
+    router = build_default_router(store, encryption_key=key)
     service = ObjectService(router)
     return DatabaseHandle(name=name, store=store, schema_registry=registry, engine=engine, router=router, object_service=service)

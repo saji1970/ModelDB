@@ -120,7 +120,11 @@ collection in any database via explicit phrasing instead.
 never depends on DuckDB specifically. Implementations: `DuckDBStore`
 (durable, one file per database), `MemoryStorageBackend` (the HOT tier),
 and `DNAStorageBackend` (the ARCHIVE tier: AES-256-GCM first, then 2 bits
-per base). `StorageRouter` (`storage_intelligence/router.py`) sends each
+per base). The archive is persistent: with `persist=` (the router passes the
+database's own store) each block's encrypted A/C/G/T copies are written
+through under `dna:<block_id>` ids, with only a small index held in memory,
+so archived objects survive a restart; without it the backend is an in-memory
+simulation used by the research tooling and tests. `StorageRouter` (`storage_intelligence/router.py`) sends each
 object to a tier's backend; matrix storage lives in `matrix/`.
 
 ## Later additions

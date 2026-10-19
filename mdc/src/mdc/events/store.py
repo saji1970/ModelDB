@@ -304,6 +304,13 @@ class EventStore:
             if new_master == old_master:
                 raise InvalidEventError("The new key is the same as the current one.")
             streams = [s["stream"] for s in list_streams_in(self._storage)]
+            if self._finished_under(new_master):
+                # An earlier run got to the end (the key check is written last):
+                # nothing is left to do, and this lets a rotation across several
+                # databases be rerun after one of them failed.
+                self._master, self._key_verified = new_master, True
+                self._tails.clear()
+                return RotationReport(streams=len(streams), records=0, already_current=len(self._storage.search(kind="event")) + len(self._storage.search(kind="snapshot")))
             self._check_key()  # the key we hold must be the one the streams were sealed with
             plan: list[tuple[str, dict[str, Any], bytes]] = []
             already = 0
@@ -332,6 +339,15 @@ class EventStore:
             self._tails.clear()
             self._key_verified = bool(streams) or self._key_verified
             return RotationReport(streams=len(streams), records=len(plan), already_current=already)
+
+    def _finished_under(self, master: bytes) -> bool:
+        if not self._storage.exists(_KEYCHECK_ID):
+            return False
+        try:
+            open_sealed(derive_stream_key(master, _KEYCHECK_STREAM), _KEYCHECK_STREAM, "keycheck", 0, self._storage.get(_KEYCHECK_ID))
+        except StreamCorruptError:
+            return False
+        return True
 
     @staticmethod
     def _kind_and_seq(block_id: str) -> tuple[str, int]:

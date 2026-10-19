@@ -242,7 +242,7 @@ def test_manager_rotates_every_database(tmp_path):
     fill(manager.events("default"))
     fill(manager.events("shop"), "cart")
     reports = manager.rotate_event_key(NEW)
-    assert {n: r.streams for n, r in reports.items()} == {"default": 1, "shop": 1}
+    assert {n: r.streams.streams for n, r in reports.items()} == {"default": 1, "shop": 1}
     assert manager.events("shop").state_at("cart").state["level"] == 6
     store.close()
     _, again = make_manager(tmp_path, NEW)
@@ -296,7 +296,7 @@ def test_cli_rotate_to_a_key_from_the_environment(tmp_path):
     db = seeded(tmp_path, OLD)
     result = run_cli("key", "rotate", "--database", str(db), "--new-key-env", "NEWKEY", env={"MDC_DNA_KEY": OLD.hex(), "NEWKEY": NEW.hex()})
     assert result.exit_code == 0, result.output
-    assert "1 stream(s)" in result.output and key_fingerprint(NEW) in result.output
+    assert "1 stream(s)" in result.output and "archive: 0 object block(s)" in result.output and key_fingerprint(NEW) in result.output
     store = DuckDBStore(db)
     assert EventStore(store, NEW).state_at("agent-1").state["level"] == 6
     store.close()

@@ -14,12 +14,23 @@ DNA-encoded - the stored sequence is ciphertext-as-ACGT, not
 plaintext-as-ACGT, so it's unreadable without the key this backend
 holds (see `security/keys.py`), not just unreadable without knowing
 the public 2-bit-per-base mapping.
+
+Persistence: constructed with `persist=<a durable StorageBackend>` (the
+router passes the database's own DuckDB store), every block is also written
+there - the A/C/G/T copies as JSON, under the id `dna:<block_id>`, with the
+caller's metadata and the plaintext checksum alongside - and read back from
+there, so archived objects survive a restart and are removed with the
+database. Without `persist` the backend is a pure in-memory simulation (the
+research tooling and unit tests use it that way). Only ciphertext is ever
+stored; reading needs the same key, and `rotate_key` re-keys what is stored.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import random
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,48 +42,135 @@ from mdc.security.keys import load_or_create_dna_key
 from mdc.storage.interface import StorageBackend
 
 
+_PERSIST_PREFIX = "dna:"
+_PERSIST_MARK = {"dna_archive": "1"}
+
+
+@dataclass(frozen=True)
+class ArchiveRotationReport:
+    blocks: int  # blocks re-encrypted under the new key
+    already_current: int  # blocks already under the new key (a rerun after an interruption)
+
+
 class DNAStorageBackend(StorageBackend):
-    def __init__(self, ecc_copies: int = 1, encryption_key: bytes | None = None):
+    def __init__(self, ecc_copies: int = 1, encryption_key: bytes | None = None, persist: StorageBackend | None = None):
         if ecc_copies < 1:
             raise ValueError("ecc_copies must be >= 1")
         self.ecc_copies = ecc_copies
         self._ecc = RepetitionECC(copies=ecc_copies) if ecc_copies > 1 else None
-        self._key = encryption_key if encryption_key is not None else load_or_create_dna_key()
+        self._explicit_key = encryption_key
+        self._persist = persist
+        # In-memory mode keeps the sequences themselves in `_sequences`; with
+        # `persist` they live in the durable store and only this small index
+        # (metadata, checksum, time) is held here.
         self._sequences: dict[str, list[str]] = {}
         self._metadata: dict[str, dict[str, Any]] = {}
         self._checksums: dict[str, str] = {}
         self._created_at: dict[str, datetime] = {}
+        if persist is not None:
+            self._load_index()
+
+    @property
+    def _key(self) -> bytes:
+        # Resolved on first use, so merely opening a database never creates a
+        # key file; one is made when something is first sealed.
+        if self._explicit_key is None:
+            self._explicit_key = load_or_create_dna_key()
+        return self._explicit_key
+
+    @_key.setter
+    def _key(self, value: bytes) -> None:
+        self._explicit_key = value
 
     def put(self, block_id: str, payload: bytes, metadata: dict[str, Any] | None = None) -> str:
+        return self._put(block_id, payload, metadata, self._key)
+
+    def _put(self, block_id: str, payload: bytes, metadata: dict[str, Any] | None, key: bytes) -> str:
         checksum = hashlib.sha256(payload).hexdigest()
-        ciphertext = encrypt(self._key, payload)
+        ciphertext = encrypt(key, payload)
         copies = self._ecc.encode(ciphertext) if self._ecc else [ciphertext]
-        self._sequences[block_id] = [encode(copy) for copy in copies]
-        self._metadata[block_id] = dict(metadata) if metadata else {}
+        sequences = [encode(copy) for copy in copies]
+        meta = dict(metadata) if metadata else {}
+        if self._persist is not None:
+            self._persist.put(
+                _PERSIST_PREFIX + block_id,
+                json.dumps({"copies": len(sequences), "sequences": sequences}).encode("ascii"),
+                metadata={**_PERSIST_MARK, "block": block_id, "checksum": checksum, "meta": meta},
+            )
+            self._metadata[block_id], self._checksums[block_id] = meta, checksum
+            self._created_at[block_id] = self._persist.metadata(_PERSIST_PREFIX + block_id)["created_at"]
+            return checksum
+        self._sequences[block_id] = sequences
+        self._metadata[block_id] = meta
         self._checksums[block_id] = checksum
         self._created_at.setdefault(block_id, datetime.now(timezone.utc))
         return checksum
 
     def get(self, block_id: str) -> bytes:
+        return self._read(block_id, self._key)
+
+    def _read(self, block_id: str, key: bytes) -> bytes:
         sequences = self._require(block_id)
-        if self._ecc is None:
-            return decrypt(self._key, decode(sequences[0]))
-        result = self._ecc.decode([decode(seq) for seq in sequences])
+        if len(sequences) == 1:
+            return decrypt(key, decode(sequences[0]))
+        # Decode with the number of copies the block was written with, not the
+        # current setting: a block stays readable if ecc_copies is changed.
+        ecc = self._ecc if self._ecc is not None and self._ecc.copies == len(sequences) else RepetitionECC(copies=len(sequences))
+        result = ecc.decode([decode(seq) for seq in sequences])
         if result.data is None:
             raise KeyError(f"block {block_id!r} could not be recovered")
-        return decrypt(self._key, result.data)
+        return decrypt(key, result.data)
 
     def exists(self, block_id: str) -> bool:
-        return block_id in self._sequences
+        return block_id in self._metadata if self._persist is not None else block_id in self._sequences
 
     def delete(self, block_id: str) -> None:
+        if self._persist is not None and block_id in self._metadata:
+            self._persist.delete(_PERSIST_PREFIX + block_id)
         self._sequences.pop(block_id, None)
         self._metadata.pop(block_id, None)
         self._checksums.pop(block_id, None)
         self._created_at.pop(block_id, None)
 
+    def rotate_key(self, new_key: bytes) -> ArchiveRotationReport:
+        """Re-encrypt every stored block under `new_key` and adopt it.
+
+        Each block is decrypted and re-encrypted in memory first, so one that
+        authenticates under neither key (damaged, or the wrong old key) stops
+        the rotation before anything is written. The writes that follow are
+        one block at a time; if the process dies part-way, run it again -
+        blocks already under the new key are recognized and skipped. Stop the
+        server first, as for stream rotation."""
+        if len(new_key) != 32:
+            raise ValueError("the new key must be 32 bytes")
+        old_key = self._key
+        if new_key == old_key:
+            raise ValueError("The new key is the same as the current one.")
+        plan: list[tuple[str, bytes]] = []
+        already = 0
+        for block_id in self.search():
+            try:
+                plan.append((block_id, self._read(block_id, old_key)))
+            except DecryptionError:
+                self._read(block_id, new_key)  # raises DecryptionError if it is under neither key
+                already += 1
+        for block_id, plaintext in plan:
+            self._put(block_id, plaintext, self._metadata[block_id], new_key)
+        self._explicit_key = new_key
+        return ArchiveRotationReport(blocks=len(plan), already_current=already)
+
+    def _load_index(self) -> None:
+        for row_id in self._persist.search(**_PERSIST_MARK):
+            info = self._persist.metadata(row_id)
+            stored = info["metadata"] or {}
+            block_id = stored.get("block") or row_id[len(_PERSIST_PREFIX):]
+            self._metadata[block_id] = stored.get("meta") or {}
+            self._checksums[block_id] = stored.get("checksum", "")
+            self._created_at[block_id] = info["created_at"]
+
     def metadata(self, block_id: str) -> dict[str, Any]:
-        self._require(block_id)
+        if not self.exists(block_id):
+            raise KeyError(f"No block found for block_id={block_id!r}")
         return {
             "metadata": self._metadata[block_id],
             "checksum": self._checksums[block_id],
@@ -81,7 +179,7 @@ class DNAStorageBackend(StorageBackend):
 
     def search(self, **filters: Any) -> list[str]:
         if not filters:
-            return list(self._sequences.keys())
+            return list(self._metadata.keys())
         return [
             block_id
             for block_id, meta in self._metadata.items()
@@ -132,6 +230,13 @@ class DNAStorageBackend(StorageBackend):
         return ECCDecodeResult(data=plaintext, recovered=result.recovered, corrected_byte_count=result.corrected_byte_count, usable_copies=result.usable_copies)
 
     def _require(self, block_id: str) -> list[str]:
+        if self._persist is not None:
+            if block_id not in self._metadata:
+                raise KeyError(f"No block found for block_id={block_id!r}")
+            try:
+                return json.loads(self._persist.get(_PERSIST_PREFIX + block_id))["sequences"]
+            except KeyError:
+                raise KeyError(f"No block found for block_id={block_id!r}") from None
         if block_id not in self._sequences:
             raise KeyError(f"No block found for block_id={block_id!r}")
         return self._sequences[block_id]

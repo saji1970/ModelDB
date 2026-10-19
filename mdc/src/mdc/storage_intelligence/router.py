@@ -178,18 +178,20 @@ class StorageRouter:
         return entry
 
 
-def build_default_router(persistent_backend: StorageBackend, *, dna_backend: StorageBackend | None = None) -> StorageRouter:
+def build_default_router(persistent_backend: StorageBackend, *, dna_backend: StorageBackend | None = None, encryption_key: bytes | None = None) -> StorageRouter:
     """HOT -> a fresh in-memory backend; WARM/COLD -> the given durable
     backend (typically a `DuckDBStore`); ARCHIVE -> a real
     `DNAStorageBackend` (Phase H) - the honest gap flagged since Phase C
     (every tier sharing one physical backend) is now closed for the one
     tier that's only ever reached by explicit archival intent (section 25).
+    The archive writes through to `persistent_backend` (its encrypted A/C/G/T
+    sequences, under `dna:` ids), so archived objects survive a restart.
     The index always rides on `persistent_backend` so it survives
     independently of any tier's data."""
     backends: dict[StorageTier, StorageBackend] = {
         StorageTier.HOT: MemoryStorageBackend(),
         StorageTier.WARM: persistent_backend,
         StorageTier.COLD: persistent_backend,
-        StorageTier.ARCHIVE: dna_backend or DNAStorageBackend(),
+        StorageTier.ARCHIVE: dna_backend or DNAStorageBackend(encryption_key=encryption_key, persist=persistent_backend),
     }
     return StorageRouter(backends, ObjectIndex(persistent_backend))
