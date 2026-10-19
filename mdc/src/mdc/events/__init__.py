@@ -20,10 +20,12 @@ from mdc.events.errors import (
     StreamCorruptError,
     StreamExistsError,
     StreamNotFoundError,
+    WrongKeyError,
 )
-from mdc.events.store import EventStore, StateView, StreamEvent
+from mdc.events.store import EventStore, RotationReport, StateView, StreamEvent
 
 __all__ = [
     "ConcurrencyError", "EventStore", "EventStoreError", "InvalidEventError", "InvalidStreamIdError", "PathOpsCodec",
     "StateCodec", "StateNotYetError", "StateView", "StreamCorruptError", "StreamEvent", "StreamExistsError", "StreamNotFoundError",
+    "WrongKeyError", "RotationReport",
 ]

@@ -52,6 +52,9 @@ if str(_data) == "/data" and not os.path.ismount("/data"):
         "  every redeploy. On Railway: right-click the ModelDB service -> Attach volume, mount path /data.",
         flush=True,
     )
+from mdc.security.keys import key_notice
+
+print("ModelDB: " + key_notice(), flush=True)
 database = Path(os.environ.get("MODELDB_DATABASE", "/data/mdc.duckdb"))
 database.parent.mkdir(parents=True, exist_ok=True)
 store = DuckDBStore(database)

@@ -226,6 +226,7 @@
       <div class="grp-label">Run &amp; secure</div>
       <a href="#explorer">Storage Explorer</a>
       <a href="#security">Security &amp; access</a>
+      <a href="#encryption">Encryption keys</a>
       <a href="#deployment">Deployment</a>
     </div>
     <div class="grp">
@@ -525,7 +526,7 @@ Create it? Reply yes to create it - anything else drops it.</span>
       </table>
 
       <h3>What is sealed, and what that does and doesn't protect</h3>
-      <p>Every record - the base state, each event, and the timestamps inside them - is encrypted with AES-256-GCM under a key derived <em>per stream</em> from the server's master key (<code>MDC_DNA_KEY</code>, or the key file the DNA tier already uses). Someone who gets at the database file sees ciphertext: not the fields, not the values, not what changed, not the event times. Each record is also bound to its stream and position, so a copied, swapped, altered or deleted event is detected on read and reported, never silently replayed.</p>
+      <p>Every record - the base state, each event, and the timestamps inside them - is encrypted with AES-256-GCM under a key derived <em>per stream</em> from the server's master key (<code>MDC_DNA_KEY</code>, or the key file the DNA tier already uses - <a href="#encryption">how to set it up and rotate it</a>). Someone who gets at the database file sees ciphertext: not the fields, not the values, not what changed, not the event times. Each record is also bound to its stream and position, so a copied, swapped, altered or deleted event is detected on read and reported, never silently replayed.</p>
       <div class="callout"><strong>The honest limits</strong>The storage layer still shows the stream id, how many records there are, their sizes, and when each record was written - so for live appends the rough time of a change is visible (not for back-filled ones). The key lives on the server: anyone with both the key and the file can read everything, and losing the key makes the streams unreadable. And the <em>API</em> is not per-stream private: any token with read permission can read any stream in that database. Sealing protects the stored bytes, not the API from its own callers.</div>
 
       <h3>Where the AI model fits</h3>
@@ -581,9 +582,75 @@ To confirm, type the database name (shop). Anything else cancels.</span>
         <tr><td>What a token may do</td><td>Four roles: <code>viewer</code> reads, <code>editor</code> also writes rows, objects and tables, <code>db_admin</code> also creates databases and <em>drops</em> things, <code>admin</code> also manages accounts. A valid token without the role gets <code>403</code></td></tr>
         <tr><td>No SQL, ever</td><td>Sentences, imported <code>.sql</code> scripts and table creation all go through the schema registry and the Data Engine; a script is parsed and never executed</td></tr>
         <tr><td>Imports and deletes</td><td>Validated before anything is written; never overwrite; deletes show what would be lost and wait for confirmation</td></tr>
-        <tr><td>Sealed at rest</td><td>The ARCHIVE tier and event streams are AES-256-GCM encrypted (streams under a per-stream derived key). Key: <code>MDC_DNA_KEY</code> (64 hex characters), or generated once into <code>~/.mdc/dna.key</code></td></tr>
+        <tr><td>Sealed at rest</td><td>The ARCHIVE tier and event streams are AES-256-GCM encrypted (streams under a per-stream derived key). Key: <code>MDC_DNA_KEY</code> (64 hex characters), or a key file (default <code>~/.mdc/dna.key</code>, location set by <code>MDC_DNA_KEY_FILE</code>). <a href="#encryption">Step-by-step key setup and rotation</a></td></tr>
       </table>
-      <div class="callout"><strong>Know the limits</strong>The encryption key lives on the server: anyone with the key and the files can read them, and losing it makes them unreadable. The API is gated by role, not per stream or per table. Tokens default to <code>admin</code> unless you pass <code>--role</code>. CORS is open on purpose so other front ends can call the API - the token is the access control. And <code>mdc serve</code> hands its page an admin token, so <strong>do not bind it to a public address</strong>; for anything reachable by others, run the container, which asks for the token instead.</div>
+      <div class="callout"><strong>Know the limits</strong>The encryption key lives on the server: anyone with the key and the files can read them, and losing it makes them unreadable (<a href="#encryption">keep it apart from the data and back it up</a>). The API is gated by role, not per stream or per table. Tokens default to <code>admin</code> unless you pass <code>--role</code>. CORS is open on purpose so other front ends can call the API - the token is the access control. And <code>mdc serve</code> hands its page an admin token, so <strong>do not bind it to a public address</strong>; for anything reachable by others, run the container, which asks for the token instead.</div>
+    </section>
+
+    <section id="encryption">
+      <h2>Encryption keys: setup &amp; rotation</h2>
+      <p>One 32-byte master key seals the data MDC stores. Event streams use a key derived from it for each stream (HKDF-SHA256), so one stream's key never opens another; every record gets a fresh random nonce and is bound to its stream and position, so a copied, swapped, edited or deleted record is detected. The ARCHIVE tier uses the master key directly, before the A/C/G/T encoding. Both are AES-256-GCM.</p>
+
+      <h3>Set it up, step by step</h3>
+      <ol>
+        <li><strong>Generate a key.</strong>
+<pre class="code-block"><code>python -m mdc key generate
+# 64 hex characters, printed once and not saved anywhere</code></pre></li>
+        <li><strong>Choose where it lives</strong> (first match wins):
+          <table>
+            <tr><th>Option</th><th>How</th><th>Use it when</th></tr>
+            <tr><td><code>MDC_DNA_KEY</code></td><td>Environment variable holding the 64 hex characters</td><td>A real deployment. The key then comes from your secrets store, never from the data disk</td></tr>
+            <tr><td><code>MDC_DNA_KEY_FILE</code></td><td>Path to a file holding the key (mode 0600). Created with a new key if it does not exist</td><td>The key is a mounted secret or sits on another disk</td></tr>
+            <tr><td>Default file</td><td><code>~/.mdc/dna.key</code>, made on first use. In the container <code>HOME</code> is <code>/data</code>, so <code>/data/.mdc/dna.key</code></td><td>Local development. The key is on the same volume as the data</td></tr>
+          </table></li>
+        <li><strong>Hand it to the server.</strong>
+<pre class="code-block"><code># local
+export MDC_DNA_KEY=&lt;the 64 hex characters&gt;
+python -m mdc serve
+
+# Docker
+docker run -p 8000:8000 -v modeldb:/data \
+  -e MDC_API_TOKENS=&lt;token&gt; -e MDC_DNA_KEY=&lt;key&gt; modeldb
+
+# key in a file outside the data volume
+docker run -p 8000:8000 -v modeldb:/data -v /secrets/mdc.key:/run/secrets/mdc.key:ro \
+  -e MDC_DNA_KEY_FILE=/run/secrets/mdc.key modeldb</code></pre>
+          On Railway add <code>MDC_DNA_KEY</code> under the service's Variables (a sealed variable), not in the repository.</li>
+        <li><strong>Check which key is in use.</strong> The server prints this at startup; the command prints the same line and never the key:
+<pre class="code-block"><code>python -m mdc key show
+# Sealing key: from MDC_DNA_KEY (fingerprint 3f9a1c07).</code></pre>
+          The fingerprint is 8 characters derived one-way from the key. Compare it with the one you recorded to be sure the right key is configured.</li>
+        <li><strong>Use MDC as normal.</strong> Streams are sealed from the first record, and the first stream written also stores a sealed key check, so later a wrong key is reported as a wrong key, not as damage.</li>
+        <li><strong>Back the key up, separately from the data.</strong> Losing it makes every sealed record unreadable, and there is no recovery. Record the fingerprint with the backup.</li>
+      </ol>
+
+      <h3>Rotate the key</h3>
+      <p>Rotation re-seals every stream in every database under a new key. Plaintext is never written: each record is opened and re-sealed in memory, and a record that does not authenticate stops the rotation before anything is changed.</p>
+      <ol>
+        <li><strong>Stop the server</strong> and back up the data directory (<code>data/</code>, or <code>/data</code> in the container).</li>
+        <li><strong>Rotate</strong>, giving the new key one of three ways, with the <em>current</em> key still configured:
+<pre class="code-block"><code># make a new key
+python -m mdc key rotate --database data/mdc.duckdb --generate
+
+# or use a key you made
+python -m mdc key rotate --database data/mdc.duckdb --new-key-env MDC_DNA_KEY_NEW
+python -m mdc key rotate --database data/mdc.duckdb --new-key-file new.key</code></pre>
+          With <code>--generate</code> and a key <em>file</em>, the old key is kept as <code>&lt;file&gt;.&lt;fingerprint&gt;.old</code>, the new key is staged as <code>&lt;file&gt;.new</code> before anything is re-sealed, and then replaces the file. With <code>MDC_DNA_KEY</code> the new key is printed once, <em>before</em> anything changes, so a crash cannot leave data sealed under a key you never saw.</li>
+        <li><strong>Switch the server to the new key</strong> (<code>MDC_DNA_KEY</code> or <code>MDC_DNA_KEY_FILE</code>) and start it. The old key now fails with a clear message.</li>
+        <li><strong>If it was interrupted</strong> (power cut, killed process), run the same command again: records already under the new key are recognized and skipped. Delete the old key and the backup only when you are sure.</li>
+      </ol>
+
+      <h3>What this does and does not cover</h3>
+      <table>
+        <tr><th>Question</th><th>Answer</th></tr>
+        <tr><td>Wrong key configured</td><td>Reads and writes fail with <em>"The sealing key in use is not the one these streams were sealed with"</em> (HTTP 500 on the API), and nothing is altered. A damaged or tampered record still reports a failed integrity check</td></tr>
+        <tr><td>Databases made before key checks existed</td><td>They keep working. Their first rotation records a key check; until then a wrong key shows as a failed integrity check</td></tr>
+        <tr><td>The ARCHIVE tier</td><td>It uses the same key but keeps its sequences in the server's memory today, so there is no stored archive to rotate; rotation covers the streams, the sealed data MDC persists</td></tr>
+        <tr><td>Rotating while the server runs</td><td>Not supported: a record written meanwhile would be sealed under the old key. Stop the server first</td></tr>
+        <tr><td>Key in a hardware module</td><td>Not supported. The key is read from the environment or a file</td></tr>
+        <tr><td>Still visible in the database file</td><td>The stream id, record counts and sizes, and when each record was written</td></tr>
+        <tr><td>Per-stream access control</td><td>None: any token with read permission reads any stream in that database</td></tr>
+      </table>
     </section>
 
     <section id="deployment">
@@ -595,7 +662,8 @@ docker run -p 8000:8000 -v modeldb:/data \
       <table>
         <tr><th>Setting</th><th>What it does</th></tr>
         <tr><td><code>MDC_API_TOKENS</code> (or <code>MODELDB_TOKEN</code>)</td><td>The API token(s). With neither set, one is generated, kept in <code>/data/modeldb-api-token</code> and printed in the deploy log</td></tr>
-        <tr><td><code>MDC_DNA_KEY</code></td><td>64 hex characters: the key for the sealed ARCHIVE tier and streams. Otherwise one is generated under <code>HOME</code> (<code>/data/.mdc/dna.key</code>)</td></tr>
+        <tr><td><code>MDC_DNA_KEY</code></td><td>64 hex characters: the key for the sealed ARCHIVE tier and streams. Otherwise the key file is used (<a href="#encryption">Encryption keys</a>)</td></tr>
+        <tr><td><code>MDC_DNA_KEY_FILE</code></td><td>Where the key file is, instead of <code>HOME/.mdc/dna.key</code> (<code>/data/.mdc/dna.key</code> in the container). Point it off the data volume to keep the key apart from the data</td></tr>
         <tr><td><code>MODELDB_DATABASE</code></td><td>The default database file (default <code>/data/mdc.duckdb</code>); other databases live beside it in <code>databases/</code></td></tr>
         <tr><td><code>PORT</code>, <code>HOST</code>, <code>MODELDB_TOKEN_FILE</code></td><td>Listen port, bind address, where a generated token is kept</td></tr>
         <tr><td>Volume at <code>/data</code></td><td>Without one the database, a generated token and the key are lost on every redeploy (the container warns about it)</td></tr>
@@ -635,6 +703,7 @@ docker run -p 8000:8000 -v modeldb:/data \
         <tr><td><code>python -m mdc serve [--host] [--port] [--database]</code></td><td>The REST API and Storage Explorer</td></tr>
         <tr><td><code>python -m mdc db init [--scale small]</code></td><td>Create the schema and seed the synthetic payments data</td></tr>
         <tr><td><code>mdc token issue &lt;name&gt; [--role viewer|editor|db_admin|admin]</code>, <code>token list</code>, <code>token revoke &lt;name&gt;</code></td><td>API tokens</td></tr>
+        <tr><td><code>mdc key generate</code>, <code>key show</code>, <code>key rotate --database ... (--generate | --new-key-env VAR | --new-key-file F)</code></td><td>Make a sealing key; show which one is in use (fingerprint only); re-seal every stream under a new key (<a href="#encryption">Encryption keys</a>)</td></tr>
         <tr><td><code>mdc user create &lt;name&gt; [--role ...]</code>, <code>user list</code>, <code>user set-role &lt;name&gt; &lt;role&gt;</code>, <code>user delete &lt;name&gt;</code></td><td>User accounts (the password is prompted for, never a command-line argument)</td></tr>
       </table>
       <p>Where things live: <code>data/mdc.duckdb</code> is the <code>default</code> database; every other one is <code>data/databases/&lt;name&gt;.duckdb</code> with its table structure in <code>&lt;name&gt;.schema.json</code>. Credentials are in <code>~/.mdc/</code>.</p>

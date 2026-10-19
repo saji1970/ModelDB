@@ -157,7 +157,10 @@ reaches storage only through it.
 - **`security/`** - `roles.py` (viewer, editor, db_admin, admin and their
   permissions, including `drop`), `tokens.py` (hashed bearer tokens),
   `users.py` (scrypt-hashed accounts), `keys.py` (the master key for sealed
-  data). Accounts share the role vocabulary but are not a login yet: access is
+  data: `MDC_DNA_KEY`, else the file `MDC_DNA_KEY_FILE` names, else
+  `~/.mdc/dna.key`; plus fingerprints and the startup notice). `EventStore`
+  stores a sealed key check so a wrong key is told apart from tampering, and
+  `rotate_key` re-seals every stream under a new key (`mdc key rotate`). Accounts share the role vocabulary but are not a login yet: access is
   decided by the role of the token presented.
 - **`api/`** - the FastAPI app (`app.py`), the chat engine (`chat.py`, one per
   session state, shared by the Explorer and `POST /chat`), and the Storage
