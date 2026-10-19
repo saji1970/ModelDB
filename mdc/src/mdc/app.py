@@ -19,6 +19,8 @@ user_app = typer.Typer(help="User accounts and roles (CLAUDE.md section 49: Auth
 app.add_typer(db_app, name="db")
 app.add_typer(token_app, name="token")
 app.add_typer(user_app, name="user")
+key_app = typer.Typer(help="The key that seals event streams and the ARCHIVE tier: show, generate, rotate.")
+app.add_typer(key_app, name="key")
 
 _ROLE_HELP = "One of: viewer (read-only), editor (+ create tables/write rows), db_admin (+ create databases), admin (+ manage users)."
 
@@ -214,8 +216,11 @@ def serve(
     from mdc.databases.manager import DatabaseManager
     from mdc.schema.loader import load_default_registry
 
+    from mdc.security.keys import key_notice
+
     console = Console()
     _ensure_admin_bootstrapped(console)
+    console.print(key_notice(), soft_wrap=True)
     database.parent.mkdir(parents=True, exist_ok=True)
     store = DuckDBStore(database)
     store.init_schema()
@@ -224,6 +229,119 @@ def serve(
 
     console.print(f"MDC Storage Explorer: http://{host}:{port}")
     uvicorn.run(web_app, host=host, port=port)
+
+
+@key_app.command("generate")
+def key_generate() -> None:
+    """Print a new random key (64 hex characters). It is not saved or used
+    anywhere until you set it as MDC_DNA_KEY, or write it to the file that
+    MDC_DNA_KEY_FILE points at."""
+    from mdc.security.keys import generate_key
+
+    typer.echo(generate_key().hex())
+
+
+@key_app.command("show")
+def key_show() -> None:
+    """Say which sealing key is in use and where it comes from. Never prints
+    the key; the fingerprint identifies it without revealing it."""
+    from mdc.security.keys import key_notice
+
+    Console().print(key_notice(), soft_wrap=True)
+
+
+@key_app.command("rotate")
+def key_rotate(
+    database: Path = typer.Option(DEFAULT_DB_PATH, help="Path to the DuckDB file (the same one `serve` uses)."),
+    new_key_file: Path = typer.Option(None, "--new-key-file", help="File holding the new key (64 hex characters)."),
+    new_key_env: str = typer.Option("", "--new-key-env", help="Name of an environment variable holding the new key."),
+    generate: bool = typer.Option(False, "--generate", help="Make a new key. If the current key is a file, the old file is kept as <file>.<fingerprint>.old and the new key replaces it; if it is MDC_DNA_KEY, the new key is printed once."),
+) -> None:
+    """Re-seal every event stream, in every database, under a new key.
+
+    Stop the server first, and back up the data directory. Nothing readable
+    is ever written. If this is interrupted, run the same command again.
+    Afterwards the OLD key no longer opens the streams: switch
+    MDC_DNA_KEY / MDC_DNA_KEY_FILE to the new one before starting the server."""
+    import os
+
+    from mdc.databases.manager import DatabaseManager
+    from mdc.events.errors import EventStoreError
+    from mdc.schema.loader import load_default_registry
+    from mdc.security.keys import (
+        find_dna_key,
+        generate_key,
+        key_fingerprint,
+        key_source,
+        parse_key,
+        read_key_file,
+        write_key_file,
+    )
+
+    console = Console()
+    if sum([new_key_file is not None, bool(new_key_env), generate]) != 1:
+        console.print("[bold red]Give exactly one of --new-key-file, --new-key-env or --generate.[/bold red]")
+        raise typer.Exit(code=1)
+    old_key = find_dna_key()
+    if old_key is None:
+        console.print("[bold red]There is no current key, so there is nothing sealed to rotate.[/bold red]")
+        raise typer.Exit(code=1)
+    source = key_source()
+    try:
+        if new_key_file is not None:
+            new_key = read_key_file(new_key_file)
+        elif new_key_env:
+            if not os.environ.get(new_key_env):
+                raise ValueError(f"environment variable {new_key_env} is not set")
+            new_key = parse_key(os.environ[new_key_env], new_key_env)
+        else:
+            new_key = generate_key()
+    except (ValueError, OSError) as exc:
+        console.print(f"[bold red]{exc}[/bold red]")
+        raise typer.Exit(code=1)
+    if new_key == old_key:
+        console.print("[bold red]The new key is the same as the current one.[/bold red]")
+        raise typer.Exit(code=1)
+
+    database.parent.mkdir(parents=True, exist_ok=True)
+    store = DuckDBStore(database)
+    store.init_schema()
+    manager = DatabaseManager(database.parent / "databases", store, load_default_registry(), event_master_key=old_key)
+    # A generated key must exist somewhere durable BEFORE any record is
+    # re-sealed under it, or a crash would leave streams sealed with a key
+    # nobody has. With a key file: keep the old key and stage the new one
+    # next to it; with MDC_DNA_KEY: show the new key now.
+    backup = staged = None
+    if generate and source.kind == "file":
+        backup = source.path.with_name(f"{source.path.name}.{key_fingerprint(old_key)}.old")
+        staged = source.path.with_name(f"{source.path.name}.new")
+        write_key_file(backup, old_key)
+        write_key_file(staged, new_key)
+    elif generate:
+        console.print("[bold]New key (shown once - store it now, before anything is changed):[/bold]")
+        typer.echo(new_key.hex())
+    try:
+        reports = manager.rotate_event_key(new_key)
+    except EventStoreError as exc:
+        console.print(f"[bold red]Rotation stopped: {exc}[/bold red]")
+        console.print("Records already re-sealed are recognized if you run the same command again.")
+        if staged is not None:
+            console.print(f"The new key is staged at {staged}; rerun with --new-key-file {staged}.")
+        raise typer.Exit(code=1)
+    finally:
+        store.close()
+
+    for name, report in reports.items():
+        console.print(f"  {name}: {report.streams} stream(s), {report.records} record(s) re-sealed" + (f", {report.already_current} already current" if report.already_current else ""))
+    console.print(f"Old key fingerprint {key_fingerprint(old_key)} -> new key fingerprint {key_fingerprint(new_key)}.")
+    if generate and source.kind == "file":
+        write_key_file(source.path, new_key)
+        staged.unlink(missing_ok=True)
+        console.print(f"New key written to {source.path}; the old key is kept at {backup}. Delete that once you are sure nothing needs it.")
+    elif generate:
+        console.print("Set that key as MDC_DNA_KEY before starting the server.")
+    else:
+        console.print("Now make the server use the new key: set MDC_DNA_KEY to it, or point MDC_DNA_KEY_FILE at its file.")
 
 
 @app.callback(invoke_without_command=True)

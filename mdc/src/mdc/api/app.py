@@ -59,6 +59,7 @@ from mdc.events import (
     EventStoreError,
     StateNotYetError,
     StreamCorruptError,
+    WrongKeyError,
     StreamExistsError,
     StreamNotFoundError,
 )
@@ -439,7 +440,7 @@ def create_app(manager: DatabaseManager, token_store: TokenStore | None = None) 
             return HTTPException(status_code=404, detail=str(exc))
         if isinstance(exc, (StreamExistsError, ConcurrencyError)):
             return HTTPException(status_code=409, detail=str(exc))
-        if isinstance(exc, StreamCorruptError):
+        if isinstance(exc, (StreamCorruptError, WrongKeyError)):
             return HTTPException(status_code=500, detail=str(exc))
         return HTTPException(status_code=422, detail=str(exc))
 

@@ -48,6 +48,7 @@ from mdc.events.errors import (
     StreamCorruptError,
     StreamExistsError,
     StreamNotFoundError,
+    WrongKeyError,
 )
 from mdc.events.sealing import derive_stream_key, open_sealed, seal
 from mdc.storage.interface import StorageBackend
@@ -57,6 +58,12 @@ _EVENT_PREFIX = "evt:"
 _SNAPSHOT_PREFIX = "snp:"
 _MAX_CLOCK_SKEW = timedelta(minutes=5)
 _CACHE_SIZE = 256
+# A sealed constant stored beside the streams. If it opens, the key is the one
+# the streams were sealed with; if it does not, the key is wrong - which is
+# different from a record having been tampered with, and is said differently.
+_KEYCHECK_ID = "keycheck:events"
+_KEYCHECK_STREAM = "__keycheck__"  # not a valid stream id, so it cannot collide
+_KEYCHECK_PLAINTEXT = b"mdc-events-key-check"
 
 
 @dataclass(frozen=True)
@@ -134,6 +141,13 @@ def list_streams_in(storage: StorageBackend) -> list[dict[str, Any]]:
     return [{"stream": s, "events": counts[s]} for s in sorted(counts)]
 
 
+@dataclass(frozen=True)
+class RotationReport:
+    streams: int  # streams looked at
+    records: int  # sealed records re-sealed under the new key
+    already_current: int  # records already sealed with the new key (a rerun after an interruption)
+
+
 class EventStore:
     def __init__(
         self,
@@ -157,6 +171,7 @@ class EventStore:
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._max = max_record_bytes
         self._lock = threading.RLock()
+        self._key_verified = False
         # stream -> (codec name, last seq, last ts, current state): only so an
         # append that gives the full new state need not replay the whole log.
         self._tails: OrderedDict[str, tuple[str, int, datetime, dict[str, Any]]] = OrderedDict()
@@ -171,6 +186,7 @@ class EventStore:
         if not isinstance(state, dict):
             raise InvalidEventError("The starting state must be a JSON object.")
         with self._lock:
+            self._check_key(first_stream=True)
             if self._block_ids(stream, "event"):
                 raise StreamExistsError(stream)
             when = self._when(ts, floor=None)
@@ -195,6 +211,7 @@ class EventStore:
         if (state is None) == (payload is None):
             raise InvalidEventError("Give exactly one of state (the new full state) or payload (a codec event).")
         with self._lock:
+            self._check_key()
             codec_name, last_seq, last_ts, current = self._tail(stream)
             if expected_seq is not None and expected_seq != last_seq:
                 raise ConcurrencyError(stream, f"expected event {expected_seq}, but the stream is at event {last_seq}")
@@ -235,12 +252,14 @@ class EventStore:
         self._check_id(stream)
         if at is not None and seq is not None:
             raise InvalidEventError("Give a time or an event number, not both.")
+        self._check_key()
         return self._rebuild(stream, _utc(at) if at is not None else None, seq)
 
     def history(self, stream: str, *, since: datetime | None = None, until: datetime | None = None, limit: int | None = None) -> list[StreamEvent]:
         """The log, oldest first: the base (kind "base", payload = starting
         state), then each event. `limit` keeps the most recent N."""
         self._check_id(stream)
+        self._check_key()
         ids = self._ordered_event_ids(stream)
         key = derive_stream_key(self._master, stream)
         events: list[StreamEvent] = []
@@ -263,6 +282,84 @@ class EventStore:
     def exists(self, stream: str) -> bool:
         self._check_id(stream)
         return bool(self._block_ids(stream, "event"))
+
+
+    # -- keys -----------------------------------------------------------------------
+
+    def rotate_key(self, new_master: bytes) -> RotationReport:
+        """Re-seal every stream under `new_master` and adopt it.
+
+        Plaintext is never written. Every record is opened and re-sealed in
+        memory first, so a record that does not authenticate stops the
+        rotation before anything is changed. The writes that follow are one
+        record at a time; if the process dies part-way, run the same rotation
+        again - records already under the new key are recognized and skipped,
+        so it finishes. Stop the server first: a stream written during a
+        rotation would be sealed under the old key and left behind.
+        """
+        if len(new_master) != 32:
+            raise ValueError("the new master key must be 32 bytes")
+        with self._lock:
+            old_master = self._master
+            if new_master == old_master:
+                raise InvalidEventError("The new key is the same as the current one.")
+            streams = [s["stream"] for s in list_streams_in(self._storage)]
+            self._check_key()  # the key we hold must be the one the streams were sealed with
+            plan: list[tuple[str, dict[str, Any], bytes]] = []
+            already = 0
+            for stream in streams:
+                old_key, new_key = derive_stream_key(old_master, stream), derive_stream_key(new_master, stream)
+                for block_id in self._block_ids(stream, "event") + self._block_ids(stream, "snapshot"):
+                    kind, seq = self._kind_and_seq(block_id)
+                    blob = self._storage.get(block_id)
+                    try:
+                        open_sealed(old_key, stream, kind, seq, blob)
+                    except StreamCorruptError:
+                        try:
+                            open_sealed(new_key, stream, kind, seq, blob)
+                        except StreamCorruptError:
+                            raise StreamCorruptError(stream, f"{kind} record {seq} opens with neither the old nor the new key") from None
+                        already += 1
+                        continue
+                    plain = open_sealed(old_key, stream, kind, seq, blob)
+                    meta = {"stream": stream, "kind": "snapshot" if kind == "snapshot" else "event"}
+                    plan.append((block_id, meta, seal(new_key, stream, kind, seq, plain)))
+            for block_id, meta, sealed in plan:
+                self._storage.put(block_id, sealed, metadata=meta)
+            if streams:
+                self._write_keycheck(new_master)
+            self._master = new_master
+            self._tails.clear()
+            self._key_verified = bool(streams) or self._key_verified
+            return RotationReport(streams=len(streams), records=len(plan), already_current=already)
+
+    @staticmethod
+    def _kind_and_seq(block_id: str) -> tuple[str, int]:
+        seq = _seq_of(block_id)
+        if block_id.startswith(_SNAPSHOT_PREFIX):
+            return "snapshot", seq
+        return ("base" if seq == 0 else "event"), seq
+
+    def _write_keycheck(self, master: bytes) -> None:
+        key = derive_stream_key(master, _KEYCHECK_STREAM)
+        self._storage.put(_KEYCHECK_ID, seal(key, _KEYCHECK_STREAM, "keycheck", 0, _KEYCHECK_PLAINTEXT), metadata={"kind": "keycheck"})
+
+    def _check_key(self, *, first_stream: bool = False) -> None:
+        """Raise WrongKeyError if the key held is not the one this database's
+        streams were sealed with. A database from before key checks existed
+        has nothing to compare against and is trusted until `rotate_key`
+        records one; an empty database records one when its first stream is made."""
+        if self._key_verified:
+            return
+        if self._storage.exists(_KEYCHECK_ID):
+            try:
+                open_sealed(derive_stream_key(self._master, _KEYCHECK_STREAM), _KEYCHECK_STREAM, "keycheck", 0, self._storage.get(_KEYCHECK_ID))
+            except StreamCorruptError:
+                raise WrongKeyError() from None
+            self._key_verified = True
+        elif first_stream and not list_streams_in(self._storage):
+            self._write_keycheck(self._master)
+            self._key_verified = True
 
     # -- internals ----------------------------------------------------------------
 

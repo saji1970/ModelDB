@@ -68,6 +68,7 @@ python -m mdc                       # start the conversational shell
 python -m mdc serve                 # REST API + Storage Explorer (--host, --port, --database)
 python -m mdc token issue <name> [--role viewer|editor|db_admin|admin]   # an API token
 python -m mdc token list | revoke <name>
+python -m mdc key generate | show | rotate --database <path> (--generate | --new-key-env VAR | --new-key-file F)   # the sealing key
 python -m mdc user create <name> [--role ...] | list | set-role <name> <role> | delete <name>
 ```
 
@@ -425,7 +426,7 @@ its `merchants` table are protected. Deletions are permanent.
   A valid token without the right role gets `403`; a missing or bad one gets `401`.
 - **User accounts** (`mdc user create|list|set-role|delete`; passwords are scrypt-hashed, in `~/.mdc/users.json`). The first time `mdc` or `mdc serve` runs in a terminal with no account, it asks you to create an admin. **Accounts are not a login yet:** the shell and the Explorer do not ask you to sign in, so who can do what is decided by the token's role.
 - **Nothing is executed as SQL.** Natural language, imported `.sql` scripts and table creation all go through the schema registry and the Data Engine.
-- **Sealed at rest:** the ARCHIVE tier and event streams are encrypted with AES-256-GCM (the streams under a per-stream derived key). The key is `MDC_DNA_KEY` (64 hex characters), or generated once into `~/.mdc/dna.key` (mode 0600). It lives on the server: anyone with the key and the files can read them, and losing it makes them unreadable.
+- **Sealed at rest:** the ARCHIVE tier and event streams are encrypted with AES-256-GCM (the streams under a per-stream derived key). The key is, first match wins: `MDC_DNA_KEY` (64 hex characters), the file named by `MDC_DNA_KEY_FILE`, or `~/.mdc/dna.key` (mode 0600, made on first use). It lives on the server: anyone with the key and the files can read them, and losing it makes them unreadable. See [Encryption keys](#encryption-keys).
 
 ## REST API
 
@@ -451,6 +452,29 @@ All routes need a token (see above); the permission column is what the token's r
 | `GET /find` | universal search | read |
 | `POST /chat`, `POST /chat/attach` | the conversational layer; the paperclip's import | write; role-dependent |
 
+## Encryption keys
+
+One 32-byte master key seals event streams (a key derived per stream, HKDF-SHA256) and the ARCHIVE tier. Set it up:
+
+```bash
+python -m mdc key generate                      # 1. a new key (64 hex characters; not saved)
+export MDC_DNA_KEY=<the key>                    # 2. give it to the server (or MDC_DNA_KEY_FILE=/path/to/file)
+python -m mdc key show                          # 3. which key is in use: source + fingerprint, never the key
+python -m mdc serve                             #    the same line is printed at startup
+```
+
+Back the key up apart from the data: lose it and sealed data is gone. The default key file sits on the data volume, so use `MDC_DNA_KEY` or `MDC_DNA_KEY_FILE` (a mounted secret, another disk) to keep them apart.
+
+**Rotate** (server stopped, data backed up; the current key still configured):
+
+```bash
+python -m mdc key rotate --database data/mdc.duckdb --generate        # or --new-key-env VAR / --new-key-file F
+```
+
+Every stream in every database is re-sealed in memory then written back; a record that does not authenticate stops it before anything changes, and an interrupted run is finished by running the same command again. A generated key is saved (file) or printed (environment) *before* any record changes. Then switch `MDC_DNA_KEY` / `MDC_DNA_KEY_FILE` to the new key. The old key then fails with "The sealing key in use is not the one these streams were sealed with" - a wrong key is reported as such, not as tampering.
+
+Not covered: the ARCHIVE tier keeps its sequences in memory today, so there is no stored archive to rotate; rotating while the server runs; hardware key storage.
+
 ## Deployment (Docker and Railway)
 
 ```bash
@@ -461,7 +485,7 @@ docker run -p 8000:8000 -v modeldb:/data -e MDC_API_TOKENS=choose-a-long-random-
 The image runs `deploy/serve.py`: the same app as `mdc serve`, minus its interactive first-run prompt, listening on every address (IPv6 where available) on `PORT` and on 8000, with `GET /healthz` for health checks. `railway.json` builds the Dockerfile, checks `/healthz`, and requires a volume at `/data`.
 
 - **Token:** `MDC_API_TOKENS` (or `MODELDB_TOKEN`). With neither set it makes one, keeps it in `/data/modeldb-api-token`, and prints it in the deploy log. The deployed Explorer asks you to paste it (kept for the browser tab); a wrong one is refused and asked for again. `/admin` redirects to `/`.
-- **Key:** set `MDC_DNA_KEY` (64 hex characters) for the sealed ARCHIVE tier and streams; otherwise one is generated under `HOME` (`/data/.mdc/dna.key` in the container).
+- **Key:** set `MDC_DNA_KEY` (64 hex characters) for the sealed ARCHIVE tier and streams, or `MDC_DNA_KEY_FILE` to keep the key file off the data volume; otherwise one is generated under `HOME` (`/data/.mdc/dna.key` in the container). See [Encryption keys](#encryption-keys).
 - **Volume:** mount `/data`. Without one, the database, a generated token and the key are lost on every redeploy (the container warns).
 - Other variables: `MODELDB_DATABASE` (default `/data/mdc.duckdb`), `MODELDB_TOKEN_FILE`, `HOST`.
 

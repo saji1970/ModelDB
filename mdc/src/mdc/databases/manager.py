@@ -44,7 +44,7 @@ from mdc.databases.errors import (
     ProtectedTableError,
 )
 from mdc.engine.data_engine import MDCDataEngine
-from mdc.events import EventStore
+from mdc.events import EventStore, RotationReport
 from mdc.events.store import list_streams_in
 from mdc.schema.registry import SchemaRegistry
 from mdc.security.keys import load_or_create_dna_key
@@ -183,6 +183,19 @@ class DatabaseManager:
                 self._event_master_key = load_or_create_dna_key()
             store = self._event_stores[name] = EventStore(handle.store, self._event_master_key)
         return store
+
+    def rotate_event_key(self, new_key: bytes) -> dict[str, RotationReport]:
+        """Re-seal the streams of every database under `new_key` (see
+        `EventStore.rotate_key`), then adopt it. Databases are done one at a
+        time; if one fails the rest are untouched and rerunning the same
+        rotation picks up where it stopped."""
+        if self._event_master_key is None:
+            self._event_master_key = load_or_create_dna_key()
+        reports: dict[str, RotationReport] = {}
+        for name in self.list_names():
+            reports[name] = self.events(name).rotate_key(new_key)
+        self._event_master_key = new_key
+        return reports
 
     def list_names(self) -> list[str]:
         on_disk = {p.stem for p in self.databases_dir.glob("*.duckdb")}

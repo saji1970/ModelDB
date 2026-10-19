@@ -50,3 +50,15 @@ class StreamCorruptError(EventStoreError):
     def __init__(self, stream: str, detail: str):
         super().__init__(f'Stream "{stream}" failed its integrity check: {detail}.')
         self.stream = stream
+
+
+class WrongKeyError(EventStoreError):
+    """The server's sealing key is not the one this database's streams were
+    sealed with. Said apart from tampering: nothing was altered, the wrong
+    key is configured. Never includes either key."""
+
+    def __init__(self):
+        super().__init__(
+            "The sealing key in use is not the one these streams were sealed with, so they cannot be read. "
+            "Configure the original key (MDC_DNA_KEY or MDC_DNA_KEY_FILE); if you rotated keys, use the new one."
+        )

@@ -20,6 +20,7 @@ from mdc.events import (
     StreamCorruptError,
     StreamExistsError,
     StreamNotFoundError,
+    WrongKeyError,
 )
 from mdc.events.sealing import derive_stream_key
 from mdc.storage.duckdb_store import DuckDBStore
@@ -362,7 +363,7 @@ def test_each_stream_has_its_own_key():
 
 def test_without_the_key_the_stream_cannot_be_read(events: EventStore, storage: DuckDBStore, clock: Clock):
     timeline(events, clock)
-    with pytest.raises(StreamCorruptError, match="different key"):
+    with pytest.raises(WrongKeyError, match="not the one these streams were sealed with"):
         EventStore(storage, b"\x55" * 32).state_at("agent-1")
 
 
