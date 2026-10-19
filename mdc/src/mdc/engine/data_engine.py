@@ -105,6 +105,33 @@ class MDCDataEngine(DataEngine):
     def has_record(self, collection: str, record_id: str) -> bool:
         return self.storage.exists(_block_id(collection, record_id))
 
+    def count_records(self, collection: str) -> int:
+        """How many records a collection holds - by block id, without reading any."""
+        if not self.schema.has_collection(collection):
+            raise CollectionNotFoundError(collection)
+        return len(self.storage.search(collection=collection))
+
+    def delete_record(self, collection: str, record_id: str) -> None:
+        """Remove one record by its id (the filters `delete` takes match field
+        values, and a record id is not a field)."""
+        if not self.schema.has_collection(collection):
+            raise CollectionNotFoundError(collection)
+        block_id = _block_id(collection, record_id)
+        if not self.storage.exists(block_id):
+            raise RecordNotFoundError(collection, f"no record {record_id!r}")
+        self.storage.delete(block_id)
+
+    def drop_collection(self, collection: str) -> int:
+        """Remove a collection: every record in it, then the collection
+        itself. Returns how many records went. Irreversible."""
+        if not self.schema.has_collection(collection):
+            raise CollectionNotFoundError(collection)
+        block_ids = self.storage.search(collection=collection)
+        for block_id in block_ids:
+            self.storage.delete(block_id)
+        self.schema.delete_collection(collection)
+        return len(block_ids)
+
     # -- internals ----------------------------------------------------------------
 
     def _put(self, record: Record) -> None:

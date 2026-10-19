@@ -70,6 +70,10 @@ class DatabaseIntent:
     STREAM_UPDATE = "STREAM_UPDATE"
     STREAM_SHOW = "STREAM_SHOW"
     STREAM_HISTORY = "STREAM_HISTORY"
+    DROP_DATABASE = "DROP_DATABASE"
+    DROP_TABLE = "DROP_TABLE"
+    DROP_STREAM = "DROP_STREAM"
+    DELETE_ROW = "DELETE_ROW"
 
 
 @dataclass(frozen=True)
@@ -92,6 +96,7 @@ class DatabaseCommand:
     stream_at: str | None = None  # show: the "as of" time, as typed
     stream_seq: int | None = None  # show: "after event N"
     stream_error: str | None = None  # a problem found while parsing (bad JSON, ...)
+    record_id: str | None = None  # delete row: which record
     raw_text: str = ""
 
 
@@ -400,6 +405,25 @@ def _stream_update(m: re.Match, raw: str) -> DatabaseCommand | None:
     return DatabaseCommand(DatabaseIntent.STREAM_UPDATE, stream_id=m.group(1), stream_values=values, stream_error=error, raw_text=raw)
 
 
+def _drop_database(m: re.Match, raw: str) -> DatabaseCommand | None:
+    return DatabaseCommand(DatabaseIntent.DROP_DATABASE, database_name=m.group(1), raw_text=raw)
+
+
+def _drop_table(m: re.Match, raw: str) -> DatabaseCommand | None:
+    table = m.group(1) or m.group(2)
+    if table.lower() in {"the", "a", "an", "this", "that", "my", "our", "it"}:  # "delete the table" names no table
+        return None
+    return DatabaseCommand(DatabaseIntent.DROP_TABLE, table_name=table, database_name=m.group(3) or m.group(4), raw_text=raw)
+
+
+def _drop_stream(m: re.Match, raw: str) -> DatabaseCommand | None:
+    return DatabaseCommand(DatabaseIntent.DROP_STREAM, stream_id=m.group(1), raw_text=raw)
+
+
+def _delete_row(m: re.Match, raw: str) -> DatabaseCommand | None:
+    return DatabaseCommand(DatabaseIntent.DELETE_ROW, record_id=m.group(1), table_name=m.group(2) or m.group(3), database_name=m.group(4) or m.group(5), raw_text=raw)
+
+
 def _transfer_help(m: re.Match, raw: str) -> DatabaseCommand | None:
     return DatabaseCommand(DatabaseIntent.TRANSFER_HELP, raw_text=raw)
 
@@ -434,6 +458,16 @@ _PATTERNS: list[tuple[re.Pattern[str], Any]] = [
     ),
     (re.compile(rf"^insert\s+into\s+({_NAME_TOKEN})\s+(.+)$", re.IGNORECASE), _insert),
     (re.compile(r"^(?:i\s+want\s+to\s+|please\s+|can\s+you\s+|could\s+you\s+)*find\s+(.+)$", re.IGNORECASE), _find),
+    (re.compile(rf"^(?:drop|delete|remove)\s+(?:the\s+)?database\s+({_NAME_TOKEN})\s*$", re.IGNORECASE), _drop_database),
+    (
+        re.compile(rf"^(?:drop|delete|remove)\s+(?:the\s+)?(?:(?:table|collection)\s+({_NAME_TOKEN})|({_NAME_TOKEN})\s+(?:table|collection)){_DB_QUALIFIER}\s*$", re.IGNORECASE),
+        _drop_table,
+    ),
+    (re.compile(rf"^(?:drop|delete|remove)\s+(?:the\s+)?stream\s+({_STREAM_ID})\s*$", re.IGNORECASE), _drop_stream),
+    (
+        re.compile(rf"^(?:delete|remove)\s+(?:the\s+)?(?:row|record)\s+([A-Za-z0-9][A-Za-z0-9_.-]{{0,63}})\s+(?:from|in)\s+(?:the\s+)?(?:(?:table|collection)\s+({_NAME_TOKEN})|({_NAME_TOKEN})\s+(?:table|collection)){_DB_QUALIFIER}\s*$", re.IGNORECASE),
+        _delete_row,
+    ),
     (re.compile(r"^(?:list|show)\s+(?:all\s+)?streams\s*$", re.IGNORECASE), _stream_list),
     (
         re.compile(rf"^(?:(?:show|get|read|list)\s+)?(?:the\s+)?history\s+of\s+stream\s+({_STREAM_ID})\s*$|^(?:show|get)\s+stream\s+({_STREAM_ID})\s+history\s*$", re.IGNORECASE),

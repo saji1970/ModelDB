@@ -45,7 +45,14 @@ from mdc.api.chat import ChatEngine
 from mdc.classification.data_type import DataType
 from mdc.conversation.db_interpreter import handle_database_command
 from mdc.conversation.state import StorageConversationState
-from mdc.databases.errors import DatabaseAlreadyExistsError, DatabaseNotFoundError, InvalidDatabaseNameError
+from mdc.databases.errors import (
+    CannotDropDefaultDatabaseError,
+    DatabaseAlreadyExistsError,
+    DatabaseNotFoundError,
+    InvalidDatabaseNameError,
+    ProtectedTableError,
+)
+from mdc.engine.errors import RecordNotFoundError
 from mdc.databases.manager import DatabaseManager, DEFAULT_DATABASE
 from mdc.events import (
     ConcurrencyError,
@@ -280,6 +287,60 @@ def create_app(manager: DatabaseManager, token_store: TokenStore | None = None) 
             "fields": [{"name": f.name, "type": f.datatype, "required": f.required} for f in collection.fields.values()],
         }
 
+
+    @router.delete("/databases/{name}", dependencies=[Depends(_require(Permission.DROP))])
+    def drop_database(name: str, confirm: str | None = None) -> dict[str, Any]:
+        """Permanently delete a database and everything in it - tables, rows,
+        objects, streams. Irreversible, so the request must repeat the
+        database's name as `?confirm=`. The default database is refused."""
+        if name == DEFAULT_DATABASE:
+            raise HTTPException(status_code=409, detail=str(CannotDropDefaultDatabaseError()))
+        try:
+            held = manager.summarize(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+        if confirm != name:
+            raise HTTPException(
+                status_code=422,
+                detail=f'This permanently deletes database "{name}" ({len(held["tables"])} table(s), {held["rows"]} row(s), '
+                f'{held["objects"]} object(s), {held["streams"]} stream(s)). Repeat the request with ?confirm={name} to proceed.',
+            )
+        manager.drop(name)
+        return {"dropped": name, "tables": len(held["tables"]), "rows": held["rows"], "objects": held["objects"], "streams": held["streams"]}
+
+    @router.delete("/databases/{name}/tables/{table}", dependencies=[Depends(_require(Permission.DROP))])
+    def drop_database_table(name: str, table: str, confirm: str | None = None) -> dict[str, Any]:
+        """Permanently delete a table and all its rows. Irreversible, so the
+        request must repeat the table's name as `?confirm=`."""
+        try:
+            handle = manager.get(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+        if not handle.schema_registry.has_collection(table):
+            raise _not_found(CollectionNotFoundError(table))
+        if manager.is_protected_table(name, table):
+            raise HTTPException(status_code=409, detail=str(ProtectedTableError(table)))
+        rows = handle.engine.count_records(table)
+        if confirm != table:
+            raise HTTPException(
+                status_code=422,
+                detail=f'This permanently deletes table "{table}" in "{name}" and its {rows} row(s). Repeat the request with ?confirm={table} to proceed.',
+            )
+        manager.drop_table(name, table)
+        return {"database": name, "dropped": table, "rows_deleted": rows}
+
+    @router.delete("/databases/{name}/tables/{table}/rows/{record_id}", status_code=204, dependencies=[Depends(_require(Permission.WRITE))])
+    def delete_database_row(name: str, table: str, record_id: str) -> Response:
+        try:
+            handle = manager.get(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+        try:
+            handle.engine.delete_record(table, record_id)
+        except (CollectionNotFoundError, RecordNotFoundError) as exc:
+            raise _not_found(exc) from exc
+        return Response(status_code=204)
+
     @router.get("/databases/{name}/tables/{table}/rows", dependencies=[Depends(_require(Permission.READ))])
     def get_database_table_rows(name: str, table: str) -> dict[str, Any]:
         try:
@@ -432,7 +493,7 @@ def create_app(manager: DatabaseManager, token_store: TokenStore | None = None) 
             "events": [{"seq": e.seq, "ts": e.ts.isoformat(), "kind": e.kind, "note": e.note, "payload": e.payload} for e in events],
         }
 
-    @router.delete("/databases/{name}/streams/{stream}", status_code=204, dependencies=[Depends(_require(Permission.WRITE))])
+    @router.delete("/databases/{name}/streams/{stream}", status_code=204, dependencies=[Depends(_require(Permission.DROP))])
     def delete_stream(name: str, stream: str) -> Response:
         try:
             removed = _events(name).delete_stream(stream)

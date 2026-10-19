@@ -301,6 +301,16 @@ was written. The API is token-gated by role, not per stream. How a change is
 encoded is a pluggable `StateCodec` (the built-in writes `set`/`unset` path
 operations); replay is always deterministic code. See `src/mdc/events/store.py`.
 
+## Deleting things
+
+`drop database <name>` (type the name to confirm), `drop table <name>`,
+`delete row <record_id> from table <t>`, `delete stream <id>`: each shows what
+would be lost and waits; anything but the confirmation cancels. REST:
+`DELETE /databases/{name}?confirm={name}`, `DELETE .../tables/{table}?confirm={table}`,
+`DELETE .../rows/{record_id}`. Dropping needs the `drop` permission (`db_admin`,
+`admin`); deleting a row or object is ordinary `write`. The `default` database and
+its `merchants` table are protected. Deletions are permanent.
+
 ## Testing
 
 ```bash

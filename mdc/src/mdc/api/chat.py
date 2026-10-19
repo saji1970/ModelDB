@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from mdc.conversation.db_interpreter import apply_pending_schema
+from mdc.conversation.db_interpreter import apply_pending_drop, apply_pending_schema
 from mdc.conversation.interpreter import process_turn
 from mdc.conversation.state import StorageConversationState
 from mdc.cql.dialogue import format_question, format_unresolved
@@ -66,6 +66,7 @@ _HELP_TEXT = (
 _CANCEL_WORDS = {"cancel", "never mind", "nevermind", "start over", "forget it", "stop"}
 _YES_WORDS = {"yes", "y", "yep", "yeah", "ok", "okay", "confirm", "create", "create it", "do it", "go ahead"}
 _NO_WORDS = {"no", "n", "nope", "don't", "dont"}
+_DELETE_YES = {"yes", "y", "yep", "confirm", "delete", "delete it", "drop", "drop it"}
 _STUCK_HINT = '\n(Say "cancel" to drop this question and ask something else.)'
 
 
@@ -152,7 +153,24 @@ class ChatEngine:
         state.pending_delete = None
 
     def handle(self, session_id: str, text: str, role: Role | None = None) -> ChatReply:
+        state = self._sessions.setdefault(session_id, StorageConversationState(session_id=session_id))
+        notice = ""
+        if not self.manager.exists(state.current_database):
+            # The database this session was working in has been dropped (here or
+            # in another session) - say so rather than fail every command.
+            notice = f'Database "{state.current_database}" no longer exists, so I switched back to "{DEFAULT_DATABASE}". '
+            state.current_database, state.last_object_id, state.pending_delete = DEFAULT_DATABASE, None, None
+        reply = self._handle(session_id, text, role)
+        return ChatReply(notice + reply.message, data=reply.data, download=reply.download) if notice else reply
+
+    def _handle(self, session_id: str, text: str, role: Role | None = None) -> ChatReply:
         if not text.strip():
+            # An empty message is not a confirmation: like any other reply that
+            # isn't one, it cancels a pending deletion or design.
+            blank_state = self._sessions.get(session_id)
+            if blank_state is not None:
+                blank_state.pending_drop = None
+                blank_state.pending_schema = None
             return ChatReply(_HELP_TEXT)
 
         state = self._sessions.setdefault(session_id, StorageConversationState(session_id=session_id))
@@ -173,11 +191,13 @@ class ChatEngine:
                 or merchants_state.confirmation is not None
                 or state.pending_delete is not None
                 or state.pending_schema is not None
+                or state.pending_drop is not None
             )
             merchants_state.pending = None
             merchants_state.confirmation = None
             state.pending_delete = None
             state.pending_schema = None
+            state.pending_drop = None
             return ChatReply("Okay, dropped that. What would you like to do?" if had_pending else "Nothing is pending. What would you like to do?")
 
         if state.pending_schema is not None:
@@ -190,6 +210,19 @@ class ChatEngine:
             state.pending_schema = None
             if command in _NO_WORDS:
                 return ChatReply("Okay, nothing was created.")
+
+        if state.pending_drop is not None:
+            # A permanent deletion is waiting. "yes" (or, for a whole database,
+            # its exact name) does it; anything else cancels it and is read as a
+            # new request - never trapping the chat.
+            pending = state.pending_drop
+            confirmed = text.strip() == pending.name if pending.kind == "database" else command in _DELETE_YES
+            if confirmed:
+                done = apply_pending_drop(state, self.manager)
+                return ChatReply(done.message, data=done.data)
+            state.pending_drop = None
+            if command in _NO_WORDS:
+                return ChatReply("Okay, nothing was deleted.")
 
         result = process_turn(state, text, self.manager, read_file=None)
         if result is not None:

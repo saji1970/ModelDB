@@ -13,15 +13,24 @@ a real injection surface; a validated field list has no such risk.
 from __future__ import annotations
 
 from mdc.conversation.result import TurnResult
-from mdc.conversation.state import PendingSchema, StorageConversationState
-from mdc.databases.errors import DatabaseAlreadyExistsError, DatabaseNotFoundError, InvalidDatabaseNameError
-from mdc.databases.manager import DatabaseManager
+from mdc.conversation.state import PendingDrop, PendingSchema, StorageConversationState
+from mdc.databases.errors import (
+    CannotDropDefaultDatabaseError,
+    DatabaseAlreadyExistsError,
+    DatabaseError,
+    DatabaseNotFoundError,
+    InvalidDatabaseNameError,
+    ProtectedTableError,
+)
+from mdc.engine.errors import RecordNotFoundError
+from mdc.databases.manager import DEFAULT_DATABASE, DatabaseManager
 from mdc.model.operation import CreateOperation, ReadOperation
 from urllib.parse import quote
 
 import json
 
 from mdc.events import EventStoreError
+from mdc.events.store import list_streams_in
 from mdc.events.timeparse import parse_time
 from mdc.nlp.db_command import DatabaseCommand, DatabaseIntent
 from mdc.portability.apply import prepare_import, resolve_database_name
@@ -372,6 +381,82 @@ def _handle_stream(state: StorageConversationState, manager: DatabaseManager, co
 
 
 
+
+def _handle_drop(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
+    """Deleting a database, table, stream or row: say exactly what would be
+    lost and wait for confirmation. Nothing is deleted on this turn."""
+    intent = command.intent
+    if (refusal := _lacks(state, Permission.WRITE if intent == DatabaseIntent.DELETE_ROW else Permission.DROP)) is not None:
+        return TurnResult(refusal)
+    database = command.database_name or state.current_database
+    try:
+        handle = manager.get(database)
+    except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+        return TurnResult(str(exc))
+
+    if intent == DatabaseIntent.DROP_DATABASE:
+        if database == DEFAULT_DATABASE:
+            return TurnResult(str(CannotDropDefaultDatabaseError()))
+        held = manager.summarize(database)
+        state.pending_drop = PendingDrop("database", database, database)
+        return TurnResult(
+            f'This permanently deletes database "{database}" and everything in it: {len(held["tables"])} table(s) holding '
+            f'{held["rows"]} row(s), {held["objects"]} object(s), {held["streams"]} stream(s). This cannot be undone.\n'
+            f"To confirm, type the database name ({database}). Anything else cancels."
+        )
+
+    if intent == DatabaseIntent.DROP_STREAM:
+        stream = command.stream_id or ""
+        events = {s["stream"]: s["events"] for s in list_streams_in(handle.store)}
+        if stream not in events:
+            return TurnResult(f'No stream named "{stream}" in "{database}".')
+        state.pending_drop = PendingDrop("stream", database, stream)
+        return TurnResult(f'This permanently deletes stream "{stream}" in "{database}" and its whole history ({events[stream]} event(s)). This cannot be undone.\nReply yes to delete it - anything else cancels.')
+
+    table = command.table_name or ""
+    if not handle.schema_registry.has_collection(table):
+        return TurnResult(f'Database "{database}" has no table "{table}".')
+    if intent == DatabaseIntent.DELETE_ROW:
+        record_id = command.record_id or ""
+        if not handle.engine.has_record(table, record_id):
+            return TurnResult(f'Table "{table}" in "{database}" has no record "{record_id}".')
+        state.pending_drop = PendingDrop("row", database, table, record_id)
+        return TurnResult(f'Delete record {record_id} from table "{table}" in "{database}"? This cannot be undone.\nReply yes to delete it - anything else cancels.')
+
+    if manager.is_protected_table(database, table):
+        return TurnResult(str(ProtectedTableError(table)))
+    rows = handle.engine.count_records(table)
+    state.pending_drop = PendingDrop("table", database, table)
+    return TurnResult(f'This permanently deletes table "{table}" in "{database}" and its {rows} row(s). This cannot be undone.\nReply yes to delete it - anything else cancels.')
+
+
+def apply_pending_drop(state: StorageConversationState, manager: DatabaseManager) -> TurnResult:
+    """The confirmation: delete it. The permission is checked again here."""
+    pending, state.pending_drop = state.pending_drop, None
+    assert pending is not None
+    if (refusal := _lacks(state, Permission.WRITE if pending.kind == "row" else Permission.DROP)) is not None:
+        return TurnResult(refusal)
+    try:
+        if pending.kind == "database":
+            held = manager.drop(pending.name)
+            back = ""
+            if state.current_database == pending.name:
+                _switch_to(state, DEFAULT_DATABASE)
+                back = f' You are back in "{DEFAULT_DATABASE}".'
+            return TurnResult(f'Deleted database "{pending.name}" ({len(held["tables"])} table(s), {held["rows"]} row(s), {held["objects"]} object(s), {held["streams"]} stream(s)).{back}')
+        if pending.kind == "table":
+            rows = manager.drop_table(pending.database, pending.name)
+            return TurnResult(f'Deleted table "{pending.name}" from "{pending.database}" ({rows} row(s)).')
+        if pending.kind == "stream":
+            manager.events(pending.database).delete_stream(pending.name)
+            return TurnResult(f'Deleted stream "{pending.name}" and its history.')
+        assert pending.record_id is not None
+        manager.get(pending.database).engine.delete_record(pending.name, pending.record_id)
+        return TurnResult(f'Deleted record {pending.record_id} from "{pending.name}".')
+    except (DatabaseError, CollectionNotFoundError, RecordNotFoundError, EventStoreError) as exc:
+        return TurnResult(str(exc))
+
+
 _HANDLERS = {
     DatabaseIntent.CREATE_DATABASE: _handle_create_database,
     DatabaseIntent.USE_DATABASE: _handle_use_database,
@@ -390,4 +475,8 @@ _HANDLERS = {
     DatabaseIntent.STREAM_UPDATE: _handle_stream,
     DatabaseIntent.STREAM_SHOW: _handle_stream,
     DatabaseIntent.STREAM_HISTORY: _handle_stream,
+    DatabaseIntent.DROP_DATABASE: _handle_drop,
+    DatabaseIntent.DROP_TABLE: _handle_drop,
+    DatabaseIntent.DROP_STREAM: _handle_drop,
+    DatabaseIntent.DELETE_ROW: _handle_drop,
 }
