@@ -256,6 +256,10 @@ def _handle_search(state, service, command: StorageCommand, read_file: ReadFile 
         results = service.list_objects(storage_tier=command.tier)
         return TurnResult(f"{len(results)} object(s) in {command.tier.value}.", data=results)
 
+    if command.list_all:
+        results = service.list_objects()
+        return TurnResult(f"{len(results)} object(s).", data=results)
+
     if command.type_word is not None:
         data_type = TYPE_WORDS[command.type_word]
         results = service.list_objects(object_type=data_type)

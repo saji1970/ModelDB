@@ -42,7 +42,7 @@ from mdc.ontology.loader import load_ontology
 from mdc.security.roles import Role
 
 _HELP_TEXT = (
-    'Try: "list models", "list images", "show objects in archive", '
+    'Try: "list models", "list images", "show objects", "show objects in archive", '
     '"show <object_id>", "read <object_id>", "explain <object_id>", '
     '"archive <object_id>", "move <object_id> to hot", '
     '"delete <object_id>", "search for <text>", "create database <name>", '

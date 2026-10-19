@@ -714,7 +714,7 @@ docker run -p 8000:8000 -v modeldb:/data \
       <table>
         <tr><th>Say this</th><th>To</th></tr>
         <tr><td><strong>Objects</strong></td><td></td></tr>
-        <tr><td><code>list models</code>, <code>list images</code>, <code>list documents</code> (also video, audio, logs, tensors, tabular, text, binary), <code>list objects in archive</code></td><td>List objects by type or tier</td></tr>
+        <tr><td><code>list models</code>, <code>list images</code>, <code>list documents</code> (also video, audio, logs, tensors, tabular, text, binary), <code>show objects</code> (everything stored), <code>list objects in archive</code></td><td>List objects by type, by tier, or all of them</td></tr>
         <tr><td><code>show &lt;id&gt;</code>, <code>read &lt;id&gt;</code>, <code>explain &lt;id&gt;</code>, <code>where is &lt;id&gt; stored</code></td><td>Metadata, content, and why it is in its tier</td></tr>
         <tr><td><code>retrieve tensor &lt;name&gt; from model &lt;id&gt;</code>, <code>retrieve layer 3 from model &lt;id&gt;</code></td><td>One tensor or layer of a model</td></tr>
         <tr><td><code>archive &lt;id&gt;</code>, <code>restore &lt;id&gt;</code>, <code>move &lt;id&gt; to hot|warm|cold|archive</code></td><td>Change tier</td></tr>

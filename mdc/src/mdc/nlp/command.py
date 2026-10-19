@@ -75,6 +75,7 @@ class StorageCommand:
     tier: StorageTier | None = None
     search_term: str | None = None
     type_word: str | None = None
+    list_all: bool = False
     path: str | None = None
     preference_text: str = ""
     raw_text: str = ""
@@ -103,6 +104,10 @@ def _retrieve(m: re.Match, raw: str) -> StorageCommand | None:
     if not _looks_like_reference(ref):
         return None
     return StorageCommand(StorageIntent.RETRIEVE, object_ref=ref, raw_text=raw)
+
+
+def _list_all(m: re.Match, raw: str) -> StorageCommand | None:
+    return StorageCommand(StorageIntent.SEARCH, list_all=True, raw_text=raw)
 
 
 def _list_tier(m: re.Match, raw: str) -> StorageCommand | None:
@@ -225,6 +230,9 @@ _PATTERNS: list[tuple[re.Pattern[str], object]] = [
     # but keeping the tier check first mirrors how specific-before-
     # general is ordered throughout this list.
     (re.compile(r"^(?:list|show|find)\s+(?:all\s+)?(?:objects?\s+)?in\s+(hot|warm|cold|archive)\b.*$", re.IGNORECASE), _list_tier),
+    # "show objects" / "list all files" / "show everything": every stored object.
+    # Literal words only, so "show all merchants" still goes to the merchants path.
+    (re.compile(r"^(?:list|show|find)\s+(?:all\s+|me\s+)?(?:the\s+)?(?:(?:stored\s+)?(?:objects?|files?)|everything)\s*$", re.IGNORECASE), _list_all),
     (re.compile(r"^(?:list|show|find)\s+(?:all\s+|me\s+)?(\w+?)s?\s*$", re.IGNORECASE), _list_type),
     (re.compile(r"^(?:show\s+me\s+where|where\s+is|where's)\s+(?:the\s+)?(.+?)\s+(?:is\s+)?stored\??\s*$", re.IGNORECASE), _describe_where),
     (re.compile(r"^(?:describe|explain|why\s+is)\s+(?:the\s+)?(.+?)\s*$", re.IGNORECASE), _describe),

@@ -201,6 +201,19 @@ def test_list_by_tier():
     assert cmd.tier is StorageTier.ARCHIVE
 
 
+@pytest.mark.parametrize("text", ["show objects", "list objects", "show all objects", "list all files", "show me everything", "find the objects", "show stored objects", "Show Objects"])
+def test_list_every_object(text):
+    cmd = parse_storage_command(text)
+    assert cmd is not None and cmd.intent is StorageIntent.SEARCH and cmd.list_all
+    assert cmd.tier is None and cmd.type_word is None
+
+
+@pytest.mark.parametrize("text", ["show all merchants", "show merchants", "list customers", "show object records", "show files in hot"])
+def test_list_every_object_does_not_swallow_other_requests(text):
+    cmd = parse_storage_command(text)
+    assert cmd is None or not cmd.list_all
+
+
 # -- INSPECT / DESCRIBE -----------------------------------------------------------
 
 def test_inspect_by_id():
