@@ -106,6 +106,8 @@ None of this is a gap in this project - MDC's DNA tier and mdc-lite both store o
 | Corruption simulation (substitution/insertion/deletion/dropout) | **Real, implemented, synthetic data**, [`dna/corruption.py`](mdc/src/mdc/dna/corruption.py) |
 | Physical DNA synthesis or sequencing | **Does not exist in this repository** |
 | Bearer-token authentication on MDC's REST API | **Real, implemented** - [`security/tokens.py`](mdc/src/mdc/security/tokens.py), issued via `mdc token issue` |
+| Event-sourced agent-state streams | **Real, implemented** - [`events/`](mdc/src/mdc/events/store.py); every record, including its timestamps, is sealed with AES-256-GCM under a per-stream key. Sealed, **not** DNA-encoded - the DNA encoding belongs to the archive tier and mdc-lite |
+| Import/export files | **Plain, readable files** - the sealing protects data stored inside MDC, not what a user downloads |
 | "Quantum encryption" (QKD) | **Not used, not applicable to local/archival storage** |
 | Data stored as a persistent quantum superposition instead of classical bits | **Not physically viable** - decoherence erases it in a handful of T2 lifetimes even unmeasured; verified via Lindblad master-equation simulation in QuTiP (§2.5), not assumed |
 | Quantum computers threaten this project's symmetric crypto today | **No** - Grover's algorithm leaves 256-bit keys secure |
