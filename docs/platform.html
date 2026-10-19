@@ -375,13 +375,13 @@ curl http://127.0.0.1:8000/models/AIM-58F0BB747C/tensors/linear.weight
 
     <section id="tiers">
       <h2>Storage tiers</h2>
-      <p>Tier is a real consequence, not a label - only <span class="tier-chip tier-hot">HOT</span> maps to genuinely different physical storage (an in-memory backend) today; <span class="tier-chip tier-archive">ARCHIVE</span> is the one exception that goes further still, actually encoding bytes to simulated DNA base sequences (2 bits per base, A/C/G/T - a real, working prototype encoder, not physical synthesis).</p>
+      <p>Tier is a real consequence, not a label - only <span class="tier-chip tier-hot">HOT</span> maps to genuinely different physical storage (an in-memory backend) today; <span class="tier-chip tier-archive">ARCHIVE</span> is the one exception that goes further still, actually encoding bytes to simulated DNA base sequences (2 bits per base, A/C/G/T - a real, working prototype encoder, not physical synthesis). The encrypted base sequences are saved in the database file, so archived objects survive a restart and are removed with their database.</p>
       <table>
         <tr><th>Tier</th><th>When</th><th>Backend</th></tr>
         <tr><td><span class="tier-chip tier-hot">HOT</span></td><td>≥ 10 reads/day</td><td>In-memory (not persisted across a restart - by design)</td></tr>
         <tr><td><span class="tier-chip tier-warm">WARM</span></td><td>≥ 0.1 reads/day, or mutable &amp; recently touched</td><td>DuckDB (durable)</td></tr>
         <tr><td><span class="tier-chip tier-cold">COLD</span></td><td>Immutable, zero access, zero mutation</td><td>DuckDB (durable)</td></tr>
-        <tr><td><span class="tier-chip tier-archive">ARCHIVE</span></td><td>Explicitly requested (never inferred from low access alone)</td><td>Simulated DNA-base encoding</td></tr>
+        <tr><td><span class="tier-chip tier-archive">ARCHIVE</span></td><td>Explicitly requested (never inferred from low access alone)</td><td>Simulated DNA-base encoding, saved in the database file</td></tr>
       </table>
 
       <div class="dna-panel">
@@ -625,7 +625,7 @@ docker run -p 8000:8000 -v modeldb:/data -v /secrets/mdc.key:/run/secrets/mdc.ke
       </ol>
 
       <h3>Rotate the key</h3>
-      <p>Rotation re-seals every stream in every database under a new key. Plaintext is never written: each record is opened and re-sealed in memory, and a record that does not authenticate stops the rotation before anything is changed.</p>
+      <p>Rotation re-seals every stream and every archived object in every database under a new key. Plaintext is never written: each record is opened and re-sealed in memory, and a record that does not authenticate stops the rotation before anything is changed.</p>
       <ol>
         <li><strong>Stop the server</strong> and back up the data directory (<code>data/</code>, or <code>/data</code> in the container).</li>
         <li><strong>Rotate</strong>, giving the new key one of three ways, with the <em>current</em> key still configured:
@@ -645,7 +645,7 @@ python -m mdc key rotate --database data/mdc.duckdb --new-key-file new.key</code
         <tr><th>Question</th><th>Answer</th></tr>
         <tr><td>Wrong key configured</td><td>Reads and writes fail with <em>"The sealing key in use is not the one these streams were sealed with"</em> (HTTP 500 on the API), and nothing is altered. A damaged or tampered record still reports a failed integrity check</td></tr>
         <tr><td>Databases made before key checks existed</td><td>They keep working. Their first rotation records a key check; until then a wrong key shows as a failed integrity check</td></tr>
-        <tr><td>The ARCHIVE tier</td><td>It uses the same key but keeps its sequences in the server's memory today, so there is no stored archive to rotate; rotation covers the streams, the sealed data MDC persists</td></tr>
+        <tr><td>The ARCHIVE tier</td><td>Archived objects are stored in the database file as encrypted A/C/G/T sequences under the same key, so they survive a restart and are re-encrypted by rotation. Only ciphertext is stored; the object's type, tier and metadata are in the index as for any object</td></tr>
         <tr><td>Rotating while the server runs</td><td>Not supported: a record written meanwhile would be sealed under the old key. Stop the server first</td></tr>
         <tr><td>Key in a hardware module</td><td>Not supported. The key is read from the environment or a file</td></tr>
         <tr><td>Still visible in the database file</td><td>The stream id, record counts and sizes, and when each record was written</td></tr>
@@ -703,7 +703,7 @@ docker run -p 8000:8000 -v modeldb:/data \
         <tr><td><code>python -m mdc serve [--host] [--port] [--database]</code></td><td>The REST API and Storage Explorer</td></tr>
         <tr><td><code>python -m mdc db init [--scale small]</code></td><td>Create the schema and seed the synthetic payments data</td></tr>
         <tr><td><code>mdc token issue &lt;name&gt; [--role viewer|editor|db_admin|admin]</code>, <code>token list</code>, <code>token revoke &lt;name&gt;</code></td><td>API tokens</td></tr>
-        <tr><td><code>mdc key generate</code>, <code>key show</code>, <code>key rotate --database ... (--generate | --new-key-env VAR | --new-key-file F)</code></td><td>Make a sealing key; show which one is in use (fingerprint only); re-seal every stream under a new key (<a href="#encryption">Encryption keys</a>)</td></tr>
+        <tr><td><code>mdc key generate</code>, <code>key show</code>, <code>key rotate --database ... (--generate | --new-key-env VAR | --new-key-file F)</code></td><td>Make a sealing key; show which one is in use (fingerprint only); re-seal every stream and archived object under a new key (<a href="#encryption">Encryption keys</a>)</td></tr>
         <tr><td><code>mdc user create &lt;name&gt; [--role ...]</code>, <code>user list</code>, <code>user set-role &lt;name&gt; &lt;role&gt;</code>, <code>user delete &lt;name&gt;</code></td><td>User accounts (the password is prompted for, never a command-line argument)</td></tr>
       </table>
       <p>Where things live: <code>data/mdc.duckdb</code> is the <code>default</code> database; every other one is <code>data/databases/&lt;name&gt;.duckdb</code> with its table structure in <code>&lt;name&gt;.schema.json</code>. Credentials are in <code>~/.mdc/</code>.</p>

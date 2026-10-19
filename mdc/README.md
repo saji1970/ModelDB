@@ -17,7 +17,7 @@ Chat / CLI / Storage Explorer / REST API (and your own NLU or UI)
         |
    MDC Data Engine  --  Schema Registry  --  Event streams
         |
-   Storage Router --  HOT (memory) / WARM / COLD (DuckDB) / ARCHIVE (encrypted, DNA-encoded)
+   Storage Router --  HOT (memory) / WARM / COLD (DuckDB) / ARCHIVE (encrypted, DNA-encoded, persisted)
 ```
 
 Natural language is an optional path into the same engine, never a shortcut
@@ -159,7 +159,7 @@ it, decides a storage strategy, and routes it to a tiered backend:
 ```
 bytes -> classify (DataType) -> profile (entropy, structure)
       -> StorageStrategyEngine (representation/compression/tier)
-      -> StorageRouter -> HOT (memory) / WARM,COLD (DuckDB) / ARCHIVE (real DNA encoding)
+      -> StorageRouter -> HOT (memory) / WARM,COLD (DuckDB) / ARCHIVE (real DNA encoding, saved in the DuckDB file)
 ```
 
 - **Classification & profiling** (`classification/`): real content-signature
@@ -471,9 +471,9 @@ Back the key up apart from the data: lose it and sealed data is gone. The defaul
 python -m mdc key rotate --database data/mdc.duckdb --generate        # or --new-key-env VAR / --new-key-file F
 ```
 
-Every stream in every database is re-sealed in memory then written back; a record that does not authenticate stops it before anything changes, and an interrupted run is finished by running the same command again. A generated key is saved (file) or printed (environment) *before* any record changes. Then switch `MDC_DNA_KEY` / `MDC_DNA_KEY_FILE` to the new key. The old key then fails with "The sealing key in use is not the one these streams were sealed with" - a wrong key is reported as such, not as tampering.
+Every stream and every archived object in every database is re-sealed in memory then written back; a record that does not authenticate stops it before anything changes, and an interrupted run is finished by running the same command again. A generated key is saved (file) or printed (environment) *before* any record changes. Then switch `MDC_DNA_KEY` / `MDC_DNA_KEY_FILE` to the new key. The old key then fails with "The sealing key in use is not the one these streams were sealed with" - a wrong key is reported as such, not as tampering.
 
-Not covered: the ARCHIVE tier keeps its sequences in memory today, so there is no stored archive to rotate; rotating while the server runs; hardware key storage.
+Not covered: rotating while the server runs; hardware key storage.
 
 ## Deployment (Docker and Railway)
 

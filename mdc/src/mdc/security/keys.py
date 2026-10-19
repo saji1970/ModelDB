@@ -127,7 +127,7 @@ def key_notice() -> str:
         return f"Sealing key: from {_ENV_VAR} (fingerprint {key_fingerprint(find_dna_key())})."
     if not source.exists:
         return (
-            f"Sealing key: none yet - one will be generated at {source.path} when the first stream is written. "
+            f"Sealing key: none yet - one will be generated at {source.path} when the first stream is written or object archived. "
             f"Back it up, or set {_ENV_VAR} (or {_FILE_ENV_VAR}) to keep the key apart from the data."
         )
     return (

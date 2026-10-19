@@ -266,6 +266,7 @@ def key_rotate(
     import os
 
     from mdc.databases.manager import DatabaseManager
+    from mdc.dna.crypto import DecryptionError
     from mdc.events.errors import EventStoreError
     from mdc.schema.loader import load_default_registry
     from mdc.security.keys import (
@@ -322,7 +323,7 @@ def key_rotate(
         typer.echo(new_key.hex())
     try:
         reports = manager.rotate_event_key(new_key)
-    except EventStoreError as exc:
+    except (EventStoreError, DecryptionError) as exc:
         console.print(f"[bold red]Rotation stopped: {exc}[/bold red]")
         console.print("Records already re-sealed are recognized if you run the same command again.")
         if staged is not None:
@@ -332,7 +333,11 @@ def key_rotate(
         store.close()
 
     for name, report in reports.items():
-        console.print(f"  {name}: {report.streams} stream(s), {report.records} record(s) re-sealed" + (f", {report.already_current} already current" if report.already_current else ""))
+        line = f"  {name}: {report.streams.streams} stream(s), {report.streams.records} record(s) re-sealed"
+        if report.archive is not None:
+            line += f"; archive: {report.archive.blocks} object block(s) re-encrypted"
+        done_already = report.streams.already_current + (report.archive.already_current if report.archive else 0)
+        console.print(line + (f" ({done_already} already current)" if done_already else ""))
     console.print(f"Old key fingerprint {key_fingerprint(old_key)} -> new key fingerprint {key_fingerprint(new_key)}.")
     if generate and source.kind == "file":
         write_key_file(source.path, new_key)
