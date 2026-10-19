@@ -192,7 +192,8 @@
 <div id="topbar">
   <a class="brand" href="index.html">mdc<span class="dot">·</span>platform</a>
   <nav>
-    <a href="index.html">mdc-lite</a>
+    <a href="index.html">ModelDB overview</a>
+    <a href="docs.html">mdc-lite docs</a>
     <a href="platform.html" class="current">Platform docs</a>
     <a href="https://github.com/saji1970/ModelDB/tree/main/mdc">Source</a>
   </nav>
@@ -391,7 +392,7 @@ curl http://127.0.0.1:8000/models/AIM-58F0BB747C/tensors/linear.weight
           <p>Every byte in the ARCHIVE tier is mapped directly to 4 DNA bases - the same information-density idea real DNA-storage research is built on:</p>
           <pre class="code-block" style="margin-bottom:12px"><code>00 → A      01 → C      10 → G      11 → T</code></pre>
           <p>A real, working error-correction scheme (N-way repetition with majority voting across independently-corrupted copies) and a seeded corruption simulator sit on top of the encoding - modeling substitution, insertion, deletion, and dropout errors the way real DNA storage research does. This is a <strong>simulation</strong>: a string of ACGT characters in a database, not a molecule - no physical synthesis or sequencing anywhere in this codebase.</p>
-          <p>Every payload is <strong>AES-256-GCM encrypted before it's DNA-encoded</strong> - the ACGT sequence is ciphertext-as-base-letters, not plaintext-as-base-letters, so it's unreadable without the key this backend holds. The mapping above is public (you're reading it), so encoding plaintext directly would only be obfuscation; encryption is what actually makes the archive tier unreadable outside MDC's own API/CLI. <a href="index.html#products">mdc-lite</a> stores every entry the same way.</p>
+          <p>Every payload is <strong>AES-256-GCM encrypted before it's DNA-encoded</strong> - the ACGT sequence is ciphertext-as-base-letters, not plaintext-as-base-letters, so it's unreadable without the key this backend holds. The mapping above is public (you're reading it), so encoding plaintext directly would only be obfuscation; encryption is what actually makes the archive tier unreadable outside MDC's own API/CLI. <a href="index.html#mdc-lite">mdc-lite</a> stores every entry the same way.</p>
           <p><a href="https://github.com/saji1970/ModelDB/blob/main/DNA-STORAGE-WHITEPAPER.md">Read the full whitepaper →</a> for the error-correction design, the corruption model, and an honest, specific answer to "does this use quantum encryption?" (short version: no - and here's what quantum computing actually does and doesn't threaten about long-retention archival data).</p>
           <p style="color:var(--text-dim); font-size:13.5px; margin-bottom:0;"><strong style="color:var(--text);">Phase 2 (planned, not yet built):</strong> extending DNA-tier features further on the platform side - stronger ECC, a Windows CLI bridge that can open an mdc-lite store directly when a phone/wearable is connected, and research into applying the same tier beyond archival storage.</p>
         </div>
