@@ -65,6 +65,14 @@ class DatabaseManager:
     def __init__(self, databases_dir: Path, default_store: DuckDBStore, default_registry: SchemaRegistry):
         self.databases_dir = databases_dir
         self.databases_dir.mkdir(parents=True, exist_ok=True)
+        # Tables added to "default" at runtime are snapshotted to its sidecar
+        # like any other database's; without reading it back here they were
+        # forgotten on restart, leaving their rows on disk but unreachable.
+        sidecar = self._schema_path_for(DEFAULT_DATABASE)
+        if sidecar.exists():
+            saved = SchemaRegistry.from_dict(json.loads(sidecar.read_text()))
+            for name in saved.list_collections():
+                default_registry.create_collection(name, saved.get_collection(name).fields)
         self._handles: dict[str, DatabaseHandle] = {DEFAULT_DATABASE: _build_handle(DEFAULT_DATABASE, default_store, default_registry)}
 
     def _path_for(self, name: str) -> Path:

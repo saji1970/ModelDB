@@ -190,3 +190,185 @@ def test_merchants_insert_via_db_admin_is_visible_to_merchants_crud(chat: ChatEn
     chat.handle("s1", "insert into merchants name=Global Mart, country=US, settlement_balance=5000")
     reply = chat.handle("s1", "Show me Global Mart")
     assert reply.data[0]["name"] == "Global Mart"
+
+
+# -- a pending clarification must not trap the whole chat ------------------------
+
+def _ask_ambiguous_balance(chat: ChatEngine) -> str:
+    reply = chat.handle("s1", "total balance of all merchants")
+    assert "clarify" in reply.message
+    return reply.message
+
+
+def test_pending_clarification_traps_unrelated_prompts_until_cancelled(chat: ChatEngine):
+    # Reproduces "every prompt returns the same response": once the merchants
+    # pipeline asks which balance is meant, a free-form prompt is read as an
+    # answer to that question and gets the identical re-ask back.
+    _ask_ambiguous_balance(chat)
+    first = chat.handle("s1", "hello").message
+    second = chat.handle("s1", "how are you").message
+    assert first == second
+    assert "didn't understand that answer" in first
+    assert 'Say "cancel"' in first  # and it now says how to leave
+
+
+def test_cancel_drops_the_pending_question(chat: ChatEngine):
+    _ask_ambiguous_balance(chat)
+    reply = chat.handle("s1", "cancel")
+    assert "dropped" in reply.message
+    # The same free-form prompt no longer gets the re-ask.
+    after = chat.handle("s1", "hello").message
+    assert "didn't understand that answer" not in after
+
+
+def test_reset_clears_pending_question_like_the_cli(chat: ChatEngine):
+    _ask_ambiguous_balance(chat)
+    assert "cleared" in chat.handle("s1", "/reset").message
+    assert "didn't understand that answer" not in chat.handle("s1", "hello").message
+
+
+def test_cancel_with_nothing_pending_is_harmless(chat: ChatEngine):
+    assert "Nothing is pending" in chat.handle("s1", "never mind").message
+
+
+def test_cancel_also_drops_a_pending_delete_confirmation(chat: ChatEngine):
+    chat.handle("s1", "Create a merchant called Acme in India")
+    assert "(yes/no)" in chat.handle("s1", "Delete merchant Acme").message
+    assert "dropped" in chat.handle("s1", "cancel").message
+    # "yes" now is not read as confirming the delete.
+    chat.handle("s1", "yes")
+    shown = chat.handle("s1", "Show Acme")
+    assert [row["name"] for row in shown.data] == ["Acme"]  # still there
+
+
+# -- export / import phrasing ----------------------------------------------------------
+
+@pytest.mark.parametrize("text, fmt, scope, database, table", [
+    ("export database as csv", "csv", None, None, None),
+    ("download the database as excel", "xlsx", None, None, None),
+    ("export database default as xls", "xlsx", None, "default", None),
+    ("export schema as markdown", "md", "schema", None, None),
+    ("export design document", "md", "schema", None, None),
+    ("export schema as er diagram", "er", "schema", None, None),
+    ("export database with data", None, "all", None, None),
+    ("export data and structure", None, "all", None, None),
+    ("export data only as sql", "sql", "data", None, None),
+    ("export table merchants as csv", "csv", None, None, "merchants"),
+    ("export database sales as sql script", "sql", None, "sales", None),
+    ("Please export everything", None, "all", None, None),
+])
+def test_export_phrasings(text, fmt, scope, database, table):
+    from mdc.nlp.db_command import DatabaseIntent, parse_database_command
+
+    command = parse_database_command(text)
+    assert command is not None and command.intent == DatabaseIntent.EXPORT
+    assert (command.export_format, command.export_scope, command.database_name, command.table_name) == (fmt, scope, database, table)
+
+
+@pytest.mark.parametrize("text", ["download report", "export nothing here", "downloading is slow", "important notes"])
+def test_other_sentences_are_not_taken_for_an_export(text):
+    from mdc.nlp.db_command import parse_database_command
+
+    assert parse_database_command(text) is None
+
+
+def test_bare_export_and_import_explain_how_to_use_them(chat: ChatEngine):
+    for text in ("export", "import", "import a csv"):
+        reply = chat.handle("s1", text)
+        assert "paperclip" in reply.message and "export database as csv" in reply.message
+        assert reply.download is None
+
+
+def test_export_of_a_database_with_no_tables_says_so(chat: ChatEngine):
+    chat.handle("s1", "create database empty")
+    assert "no tables yet" in chat.handle("s1", "export database as sql").message
+
+
+# -- building a schema from a prompt or an ER diagram -----------------------------------
+
+DESIGN_PROMPT = "create database shop with customers(name, email, joined), orders(customer_id, total decimal, paid)"
+
+
+def test_design_prompt_is_previewed_and_creates_nothing_until_yes(chat: ChatEngine, manager: DatabaseManager):
+    reply = chat.handle("s1", DESIGN_PROMPT)
+    assert 'new database "shop"' in reply.message
+    assert "customers: name string, email string, joined datetime" in reply.message
+    assert "orders: customer_id string, total decimal, paid boolean" in reply.message
+    assert "Guessed from the field names" in reply.message and "joined -> datetime" in reply.message
+    assert not manager.exists("shop")
+
+    created = chat.handle("s1", "yes")
+    assert "Imported into new database" in created.message
+    assert manager.get("shop").schema_registry.list_collections() == ["customers", "orders"]
+    assert chat.session_database("s1") == "shop"  # and the session moved into it
+    assert chat.handle("s1", "insert into customers name=Ada").message.startswith("Inserted")
+
+
+def test_design_no_drops_the_proposal(chat: ChatEngine, manager: DatabaseManager):
+    chat.handle("s1", DESIGN_PROMPT)
+    assert "nothing was created" in chat.handle("s1", "no").message
+    chat.handle("s1", "yes")  # nothing is pending any more
+    assert not manager.exists("shop")
+
+
+def test_anything_else_drops_the_proposal_and_runs_as_a_new_request(chat: ChatEngine, manager: DatabaseManager):
+    chat.handle("s1", DESIGN_PROMPT)
+    assert "database(s)" in chat.handle("s1", "list databases").message  # ran as a normal command
+    chat.handle("s1", "yes")
+    assert not manager.exists("shop")
+
+
+def test_cancel_drops_a_pending_design(chat: ChatEngine, manager: DatabaseManager):
+    chat.handle("s1", DESIGN_PROMPT)
+    assert "dropped" in chat.handle("s1", "cancel").message
+    chat.handle("s1", "yes")
+    assert not manager.exists("shop")
+
+
+def test_design_adds_tables_to_the_current_database_when_none_is_named(chat: ChatEngine, manager: DatabaseManager):
+    chat.handle("s1", "create database lab")
+    reply = chat.handle("s1", "create tables samples(label, weight, taken_at)")
+    assert 'database "lab"' in reply.message and "new database" not in reply.message
+    chat.handle("s1", "yes")
+    assert manager.get("lab").schema_registry.list_collections() == ["samples"]
+
+
+def test_design_conflict_is_reported_not_proposed(chat: ChatEngine):
+    reply = chat.handle("s1", "create tables merchants(name)")
+    assert "already exists" in reply.message and "Create it?" not in reply.message
+
+
+def test_design_prompts_do_not_swallow_other_sentences(chat: ChatEngine):
+    assert "Created MER-" in chat.handle("s1", "Create a merchant called Foo (Bar) in India").message
+    assert 'Created database "plain"' in chat.handle("s1", "create database plain").message
+    assert "Create it?" not in chat.handle("s1", "create table x with a string, b integer").message
+
+
+def test_er_diagram_pasted_into_chat_is_previewed_then_created(chat: ChatEngine, manager: DatabaseManager):
+    # Mermaid wants one attribute per line, so lay it out that way
+    diagram = "create the schema for database library from this:\nerDiagram\n  AUTHOR ||--o{ BOOK : writes\n  AUTHOR {\n    string name PK\n  }\n  BOOK {\n    string title\n  }\n"
+    reply = chat.handle("s1", diagram)
+    assert 'new database "library"' in reply.message
+    assert "author: name string*" in reply.message and "book: title string, author_id string" in reply.message
+    chat.handle("s1", "yes")
+    assert manager.get("library").schema_registry.list_collections() == ["author", "book"]
+
+
+def test_bad_er_diagram_in_chat_explains_what_is_wrong(chat: ChatEngine):
+    reply = chat.handle("s1", "build this\nerDiagram\n  A {\n    ???\n  }\n")
+    assert "couldn't read that ER diagram" in reply.message and "cannot read the attribute" in reply.message
+
+
+def test_roles_limit_what_a_chat_prompt_may_create(manager: DatabaseManager):
+    from mdc.security.roles import Role
+
+    engine = ChatEngine(manager)
+    refused = engine.handle("e", DESIGN_PROMPT, role=Role.EDITOR)  # editors cannot create databases
+    assert "create_database" in refused.message and "Create it?" not in refused.message
+    assert "create_database" in engine.handle("e", "create database viachat", role=Role.EDITOR).message
+    assert not manager.exists("viachat")
+    # ...but may add tables to an existing database
+    assert "Create it?" in engine.handle("e", "create tables extra(name)", role=Role.EDITOR).message
+    # a database admin may do both
+    assert "Create it?" in engine.handle("d", DESIGN_PROMPT, role=Role.DB_ADMIN).message
+    assert 'Created database "viachat2"' in engine.handle("d", "create database viachat2", role=Role.DB_ADMIN).message

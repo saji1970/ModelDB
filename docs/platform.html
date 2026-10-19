@@ -137,6 +137,7 @@
   .transcript .c1 { color: #7d8590; }
 
   table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px; }
+  td code { overflow-wrap: anywhere; }  /* long query strings must wrap, not widen the page */
   table :is(th, td) { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
   table th { font-family: "JetBrains Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 500; }
   table code { font-size: 12.5px; }
@@ -202,6 +203,7 @@
       <a href="#multi-db">Multiple databases</a>
       <a href="#tables">Tables &amp; queries</a>
       <a href="#find">Universal search</a>
+      <a href="#import-export">Import, export &amp; design</a>
     </div>
     <div class="grp">
       <div class="grp-label">Reference</div>
@@ -359,6 +361,67 @@ describe table products in database inventory</code></pre>
 <span class="reply">1 row(s) matched.</span></div>
     </section>
 
+    <section id="import-export">
+      <h2>Import, export &amp; schema design</h2>
+      <p>Everything below works from the chat window - no SQL, and nothing is written unless the whole request is valid.</p>
+
+      <h3>Import: the paperclip (or drop a file on the chat)</h3>
+      <table>
+        <tr><th>File</th><th>Becomes</th></tr>
+        <tr><td><code>.md</code> design document</td><td>A database with the tables the document defines (format below). Exports from this page's <em>design document</em> import straight back.</td></tr>
+        <tr><td><code>.mmd</code>, or <code>.md</code> containing a <code>```mermaid erDiagram</code> block</td><td>A database built from the ER diagram. A relationship becomes a <code>&lt;parent&gt;_id</code> field on the "many" side (MDC stores no foreign keys); many-to-many is flagged, not guessed.</td></tr>
+        <tr><td><code>.csv</code> / <code>.tsv</code></td><td>One table, named after the file, in the database your chat is working in. Types are inferred (integer, decimal, boolean, datetime, else string; <code>01234</code> stays text). A <code>record_id</code> column is kept as the row identity.</td></tr>
+        <tr><td><code>.sql</code> script</td><td>Its <code>CREATE TABLE</code> and <code>INSERT ... VALUES</code> statements, <strong>parsed - never executed</strong>. <code>DROP</code>, <code>DELETE</code>, <code>UPDATE</code>, <code>ALTER</code> and the rest are skipped and listed in the reply. Values must be plain strings, numbers, <code>TRUE</code>/<code>FALSE</code> or <code>NULL</code> (standard <code>''</code> escaping).</td></tr>
+        <tr><td><code>.json</code> / <code>.dnadb.json</code></td><td>An MDC export file from another instance - structure, data, or both, with each row's <code>record_id</code> preserved.</td></tr>
+      </table>
+      <p>A file that defines a database (design document, ER diagram, SQL script, export file) creates it under the name the file gives it; add <code>?database=</code> to the REST call to choose another. An import never overwrites: an existing table, or a <code>record_id</code> that already exists, stops the whole import with a clear message. The role of the caller decides what is allowed - creating a database needs <code>create_database</code>, new tables <code>create_table</code>, rows <code>write</code>. Files over 25&nbsp;MB are refused.</p>
+
+      <p>The design-document format - this is also what a <em>design document</em> export produces:</p>
+      <pre class="code-block"><code># Database: shop
+
+## Table: customers
+
+| Field   | Type     | Required |
+|---------|----------|----------|
+| name    | string   | yes      |
+| credit  | decimal  | no       |
+| joined  | datetime | no       |</code></pre>
+      <p>Types are <code>string</code>, <code>decimal</code>, <code>integer</code>, <code>boolean</code>, <code>datetime</code>; SQL-style names (<code>varchar(50)</code>, <code>int</code>, <code>date</code>, ...) are read as the nearest of those and flagged.</p>
+
+      <h3>Export: ask in the chat, get a download button</h3>
+      <div class="transcript"><span class="prompt">&gt; export database as csv</span>
+<span class="reply">Your export is ready: shop-csv.zip   [⬇ shop-csv.zip]</span>
+
+<span class="prompt">&gt; export schema as markdown</span>
+<span class="reply">Your export is ready: shop-design.md   [⬇ shop-design.md]</span>
+
+<span class="prompt">&gt; export database with data</span>
+<span class="reply">Your export is ready: shop.dnadb.json   [⬇ shop.dnadb.json]</span></div>
+      <table>
+        <tr><th>Format</th><th>Say</th><th>Contains</th></tr>
+        <tr><td>CSV</td><td><code>export database as csv</code>, <code>export table &lt;name&gt; as csv</code></td><td>Data only - a zip with a file per table, or one table's file. Each row starts with its <code>record_id</code>.</td></tr>
+        <tr><td>SQL script</td><td><code>export database as sql</code></td><td><code>CREATE TABLE</code> + <code>INSERT</code> (standard SQL), or just one of them with <code>schema</code>/<code>data</code></td></tr>
+        <tr><td>Excel</td><td><code>export database as excel</code></td><td>A sheet per table plus a <code>_schema</code> sheet (<code>.xlsx</code>)</td></tr>
+        <tr><td>Design document</td><td><code>export schema as markdown</code></td><td>Structure only: an ER diagram (Mermaid) and a table per entity</td></tr>
+        <tr><td>ER diagram</td><td><code>export schema as er diagram</code></td><td>The Mermaid source alone (<code>.mmd</code>)</td></tr>
+        <tr><td>MDC export file</td><td><code>export database with data</code>, <code>export schema only</code>, <code>export data only</code></td><td>Structure, data, or both, for importing into another MDC instance</td></tr>
+      </table>
+      <p>CSV and Excel cells that start with <code>=</code>, <code>+</code>, <code>-</code> or <code>@</code> are written so a spreadsheet shows them as text rather than running them as formulas; importing the CSV back restores the original value.</p>
+
+      <h3>Build a schema from a prompt or an ER diagram</h3>
+      <p>Describe it, or paste an <code>erDiagram</code> into the chat. MDC shows what it understood and creates nothing until you say <strong>yes</strong>:</p>
+      <div class="transcript"><span class="prompt">&gt; create database shop with customers(name, email, joined), orders(customer_id, total decimal, paid)</span>
+<span class="reply">Here is the design - new database "shop":
+  customers: name string, email string, joined datetime
+  orders: customer_id string, total decimal, paid boolean
+- Guessed from the field names: customers.joined -&gt; datetime, orders.paid -&gt; boolean. ...
+Create it? Reply yes to create it - anything else drops it.</span>
+
+<span class="prompt">&gt; yes</span>
+<span class="reply">Imported into new database "shop": customers, orders (0 row(s) loaded).</span></div>
+      <p>This is a deterministic grammar, not a language model: a field without a type is a string unless its name suggests otherwise (<code>total</code>, <code>price</code> -&gt; decimal; <code>age</code>, <code>count</code> -&gt; integer; <code>is_...</code>, <code>active</code> -&gt; boolean; <code>..._at</code>, <code>date</code>, <code>joined</code> -&gt; datetime), and every guess is listed. Free-form requests such as "I need a database for a school" are not interpreted - that needs a language model, which this build does not include.</p>
+    </section>
+
     <section id="rest-api">
       <h2>REST API reference</h2>
       <p style="color:var(--text-dim); font-size:14.5px;">Every route below requires <code>Authorization: Bearer &lt;token&gt;</code> - see <a href="#integrations">Connect your own NLU or UI</a> for how to issue one.</p>
@@ -376,7 +439,10 @@ describe table products in database inventory</code></pre>
         <tr><td><code>POST /databases/{name}/tables/{table}</code></td><td>Create a table from structured field data - no sentence to construct</td></tr>
         <tr><td><code>POST /databases/{name}/tables/{table}/rows</code></td><td>Insert a row from structured field data</td></tr>
         <tr><td><code>GET /find</code></td><td>Structured universal search - <code>?q=&amp;min=&amp;max=&amp;database=&amp;table=</code></td></tr>
+        <tr><td><code>GET /databases/{name}/export</code></td><td>Download a database - <code>?format=csv|sql|xlsx|md|er|dnadb&amp;scope=schema|data|all&amp;table=</code></td></tr>
+        <tr><td><code>POST /databases/import</code></td><td>Create a database or tables from an uploaded file (raw body, <code>?filename=</code> picks the format, optional <code>&amp;database=</code>)</td></tr>
         <tr><td><code>POST /chat</code></td><td>The same conversational layer the CLI and browser chat panel use</td></tr>
+        <tr><td><code>POST /chat/attach</code></td><td>The chat window's paperclip: like import, but a CSV lands in the chat session's current database</td></tr>
       </table>
     </section>
 
@@ -387,6 +453,9 @@ describe table products in database inventory</code></pre>
         <tr><td><code>store ./file</code>, <code>list models</code>, <code>show &lt;id&gt;</code>, <code>archive &lt;id&gt;</code>, <code>move &lt;id&gt; to hot</code>, <code>search for &lt;text&gt;</code></td><td>Work with polymorphic objects (models, images, documents, ...)</td></tr>
         <tr><td><code>create database &lt;name&gt;</code>, <code>create table ... with ...</code>, <code>show data in &lt;table&gt;</code>, <code>insert into &lt;table&gt; ...</code></td><td>Manage databases and tables</td></tr>
         <tr><td><code>find &lt;text&gt; [under/over &lt;amount&gt;]</code></td><td>Search every database and document at once</td></tr>
+        <tr><td><code>export database as csv|sql|excel|markdown</code>, <code>export schema as er diagram</code>, <code>export database with data</code></td><td>Download a database - see <a href="#import-export">Import, export &amp; design</a></td></tr>
+        <tr><td><code>create database shop with customers(name, email), orders(total decimal)</code>, or a pasted <code>erDiagram</code></td><td>Propose a schema, then create it on <code>yes</code></td></tr>
+        <tr><td><code>cancel</code>, <code>never mind</code>, <code>/reset</code></td><td>Drop whatever question or proposal the chat is waiting on</td></tr>
         <tr><td><code>Show all merchants</code>, <code>Create a merchant called ...</code></td><td>Merchants CRUD/analytics (a separate, earlier conversational domain - see the platform README for why)</td></tr>
       </table>
       <div class="callout"><strong>Full reference</strong>The complete README, including the acceptance-test walkthroughs this documentation draws from, lives at <a href="https://github.com/saji1970/ModelDB/blob/main/mdc/README.md">mdc/README.md</a>; the architecture write-up (including the honest scoping note on why merchants-CRUD and the object store stay separate systems) is at <a href="https://github.com/saji1970/ModelDB/blob/main/mdc/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>.</div>

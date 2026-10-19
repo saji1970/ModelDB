@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from typing import Any
 
 from mdc.engine.base import DataEngine, OperationResult
-from mdc.engine.errors import RecordNotFoundError
+from mdc.engine.errors import DuplicateRecordError, InvalidRecordIdError, RecordNotFoundError
 from mdc.model.operation import CountOperation, CreateOperation, DeleteOperation, Filter, ReadOperation, Sort, UpdateOperation
 from mdc.model.record import Record, utcnow
 from mdc.schema.registry import CollectionNotFoundError, SchemaRegistry
@@ -39,9 +40,17 @@ class MDCDataEngine(DataEngine):
 
     def create(self, operation: CreateOperation) -> OperationResult:
         validated = self.schema.validate_record(operation.collection, operation.data, partial=False)
+        record_id = operation.record_id
+        if record_id is None:
+            record_id = _generate_record_id(operation.collection)
+        else:
+            if not RECORD_ID_RE.match(record_id):
+                raise InvalidRecordIdError(record_id)
+            if self.has_record(operation.collection, record_id):
+                raise DuplicateRecordError(operation.collection, record_id)
         now = utcnow()
         record = Record(
-            record_id=_generate_record_id(operation.collection),
+            record_id=record_id,
             collection=operation.collection,
             version=1,
             created_at=now,
@@ -93,6 +102,9 @@ class MDCDataEngine(DataEngine):
         matches = self._matching(operation.collection, operation.filters)
         return OperationResult(kind="COUNT", collection=operation.collection, count=len(matches))
 
+    def has_record(self, collection: str, record_id: str) -> bool:
+        return self.storage.exists(_block_id(collection, record_id))
+
     # -- internals ----------------------------------------------------------------
 
     def _put(self, record: Record) -> None:
@@ -109,6 +121,9 @@ class MDCDataEngine(DataEngine):
         block_ids = self.storage.search(collection=collection)
         records = [Record.model_validate_json(self.storage.get(block_id)) for block_id in block_ids]
         return [record for record in records if _matches(record.fields, filters)]
+
+
+RECORD_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
 def _block_id(collection: str, record_id: str) -> str:

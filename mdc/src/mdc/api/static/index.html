@@ -130,6 +130,17 @@
   }
   #chat-send:hover { background: var(--accent-dark); }
   #chat-hint { padding: 0 14px 10px; font-size: 11px; color: var(--text-dim); }
+  #chat-attach {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    padding: 0 10px; cursor: pointer; font-size: 15px; color: var(--text-dim);
+  }
+  #chat-attach:hover { background: var(--hover); border-color: var(--accent); }
+  #chat.dragging { outline: 2px dashed var(--accent); outline-offset: -6px; background: var(--hover); }
+  .msg-download {
+    align-self: flex-start; background: var(--panel); border: 1px solid var(--accent); color: var(--accent-dark);
+    border-radius: 14px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; font-weight: 600;
+  }
+  .msg-download:hover { background: var(--hover); }
 </style>
 </head>
 <body>
@@ -198,8 +209,10 @@
     <div id="chat">
       <div id="chat-header">💬 Ask MDC</div>
       <div id="chat-messages"></div>
-      <div id="chat-hint">Try "list images", "show &lt;id&gt;", "archive &lt;id&gt;", "search for report"</div>
+      <div id="chat-hint">Try "list images", "show &lt;id&gt;", "search for report", "export database as csv". Use 📎 (or drop a file) to import a .md, .csv, .sql or MDC export.</div>
       <form id="chat-form">
+        <button type="button" id="chat-attach" title="Import a .md design document, .csv, .sql script or MDC export file">📎</button>
+        <input type="file" id="chat-file" accept=".md,.markdown,.csv,.tsv,.sql,.json" style="display:none">
         <textarea id="chat-input" rows="1" placeholder="Ask about your storage…"></textarea>
         <button type="submit" id="chat-send">Send</button>
       </form>
@@ -572,6 +585,57 @@ function addDataTable(rows) {
   wrap.scrollIntoView({ block: "end" });
 }
 
+// Exports are authenticated API routes, so a plain link can't carry the
+// token: fetch the file (the page's fetch wrapper adds it), then save the blob.
+async function downloadFile(url, filename) {
+  const res = await fetch(url);
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json()).detail; } catch (e) { /* not JSON */ }
+    addMessage("Export failed: " + (detail || res.status), "bot");
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(await res.blob());
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+}
+
+function addDownload(download) {
+  const button = document.createElement("button");
+  button.className = "msg-download";
+  button.textContent = "⬇ " + download.filename;
+  button.addEventListener("click", () => downloadFile(download.url, download.filename));
+  document.getElementById("chat-messages").appendChild(button);
+  button.scrollIntoView({ block: "end" });
+}
+
+async function attachFile(file) {
+  if (!file) return;
+  addMessage("📎 " + file.name, "user");
+  const res = await fetch(`/chat/attach?filename=${encodeURIComponent(file.name)}&session_id=${encodeURIComponent(sessionId)}`, {
+    method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: await file.arrayBuffer(),
+  });
+  let body = {};
+  try { body = await res.json(); } catch (e) { /* not JSON */ }
+  addMessage(res.ok ? body.message : "Import failed: " + (body.detail || res.status), "bot");
+  loadDatabaseNav();
+  refreshCurrentView();
+}
+
+document.getElementById("chat-attach").addEventListener("click", () => document.getElementById("chat-file").click());
+document.getElementById("chat-file").addEventListener("change", async (e) => {
+  await attachFile(e.target.files[0]);
+  e.target.value = "";
+});
+const chatPanel = document.getElementById("chat");
+["dragenter", "dragover"].forEach(type => chatPanel.addEventListener(type, (e) => { e.preventDefault(); chatPanel.classList.add("dragging"); }));
+["dragleave", "drop"].forEach(type => chatPanel.addEventListener(type, (e) => { e.preventDefault(); chatPanel.classList.remove("dragging"); }));
+chatPanel.addEventListener("drop", (e) => attachFile(e.dataTransfer.files[0]));
+
 document.getElementById("chat-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const input = document.getElementById("chat-input");
@@ -585,8 +649,13 @@ document.getElementById("chat-form").addEventListener("submit", async (e) => {
     body: JSON.stringify({ message, session_id: sessionId }),
   });
   const reply = await res.json();
+  if (!res.ok) {
+    addMessage("Error: " + (reply.detail || res.status), "bot");
+    return;
+  }
   addMessage(reply.message, "bot");
   if (Array.isArray(reply.data)) addDataTable(reply.data);
+  if (reply.download) addDownload(reply.download);
 
   loadDatabaseNav();
   refreshCurrentView();

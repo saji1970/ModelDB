@@ -19,8 +19,22 @@ always stays on the original default database (see
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from mdc.databases.manager import DEFAULT_DATABASE
+
+if TYPE_CHECKING:
+    from mdc.portability.plan import ImportPlan
+    from mdc.security.roles import Role
+
+
+@dataclass
+class PendingSchema:
+    """A proposed database design (from a chat prompt or an ER diagram)
+    waiting for the user's "yes" - nothing is created before that."""
+
+    plan: "ImportPlan"
+    database: str
 
 
 @dataclass
@@ -29,8 +43,13 @@ class StorageConversationState:
     last_object_id: str | None = None
     pending_delete: str | None = None
     current_database: str = DEFAULT_DATABASE
+    pending_schema: PendingSchema | None = None
+    # The role of whoever is sending this turn - set by the HTTP chat from the
+    # caller's token. None (the CLI, tests) means no restriction.
+    role: "Role | None" = None
 
     def reset(self) -> None:
         self.last_object_id = None
         self.pending_delete = None
+        self.pending_schema = None
         self.current_database = DEFAULT_DATABASE

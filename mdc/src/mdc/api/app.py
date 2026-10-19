@@ -49,6 +49,10 @@ from mdc.databases.manager import DatabaseManager, DEFAULT_DATABASE
 from mdc.model.operation import CreateOperation, ReadOperation
 from mdc.models.errors import ModelNotFoundError, TensorNotFoundError
 from mdc.nlp.db_command import VALID_FIELD_TYPES, DatabaseCommand, DatabaseIntent
+from mdc.portability.apply import ImportResult, prepare_import, resolve_database_name
+from mdc.portability.plan import ExportOptionError, ImportConflictError, ImportDataError, ImportFormatError
+from mdc.portability.readers import read_import, stem_of
+from mdc.portability.writers import export_database
 from mdc.schema.registry import CollectionNotFoundError, FieldSchema, SchemaError
 from mdc.security.roles import Permission, Role, role_has
 from mdc.security.tokens import TokenStore
@@ -57,6 +61,7 @@ from mdc.storage_intelligence.router import DataIntegrityError, ObjectNotFoundEr
 from mdc.storage_intelligence.strategy import StorageTier
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
+_MAX_IMPORT_BYTES = 25 * 1024 * 1024
 _LOCAL_UI_TOKEN_NAME = "local-browser-ui"
 
 
@@ -115,6 +120,7 @@ def create_app(manager: DatabaseManager, token_store: TokenStore | None = None) 
         allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Content-Disposition"],  # so a cross-origin UI can read an export's filename
     )
 
     def _not_found(exc: Exception) -> HTTPException:
@@ -266,6 +272,75 @@ def create_app(manager: DatabaseManager, token_store: TokenStore | None = None) 
             "count": result.count,
         }
 
+
+    async def _import_body(request: Request) -> bytes:
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > _MAX_IMPORT_BYTES:
+            raise HTTPException(status_code=413, detail=f"The file is larger than the {_MAX_IMPORT_BYTES // (1024 * 1024)} MB import limit.")
+        body = await request.body()
+        if len(body) > _MAX_IMPORT_BYTES:
+            raise HTTPException(status_code=413, detail=f"The file is larger than the {_MAX_IMPORT_BYTES // (1024 * 1024)} MB import limit.")
+        if not body:
+            raise HTTPException(status_code=422, detail="The file is empty.")
+        return body
+
+    def _run_import(filename: str, content: bytes, role: Role, explicit_database: str | None, session_database: str | None) -> ImportResult:
+        """Parse -> validate everything -> check the caller's role against
+        what the import would do -> only then write. Nothing is ever
+        executed as SQL: a script is parsed into tables and rows."""
+        try:
+            plan = read_import(filename, content)
+            database = resolve_database_name(plan, explicit_database, session_database, stem_of(filename))
+            prepared = prepare_import(manager, plan, database)
+        except (ImportFormatError, ImportDataError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ImportConflictError as exc:
+            raise HTTPException(status_code=409, detail="Nothing was imported - " + str(exc)) from exc
+        missing = sorted(p.value for p in prepared.required_permissions if not role_has(role, p))
+        if missing:
+            raise HTTPException(status_code=403, detail=f"Token role {role.value!r} lacks the {', '.join(missing)!r} permission this import needs.")
+        return prepared.apply()
+
+    @router.get("/databases/{name}/export", dependencies=[Depends(_require(Permission.READ))])
+    def export_database_file(name: str, format: str = "dnadb", scope: str | None = None, table: str | None = None) -> Response:
+        """Download a database as csv (one file, or a zip of one per
+        table), sql, xlsx, md (a design document with an ER diagram), er
+        (the Mermaid source of that diagram), or dnadb (an MDC export
+        file another instance can import). `scope` is schema, data or
+        all; each format has a sensible default."""
+        try:
+            handle = manager.get(name)
+        except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+            raise _not_found(exc) from exc
+        try:
+            file = export_database(handle, format, scope, table)
+        except ExportOptionError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except CollectionNotFoundError as exc:
+            raise _not_found(exc) from exc
+        return Response(content=file.content, media_type=file.media_type, headers={"Content-Disposition": f'attachment; filename="{file.filename}"'})
+
+    @router.post("/databases/import", status_code=201)
+    async def import_database_file(request: Request, filename: str, database: str | None = None, role: Role = Depends(_authenticate)) -> dict[str, Any]:
+        """Create a database / tables from an uploaded file (raw request
+        body, `?filename=` picks the format by extension): .md design
+        document, .csv, .sql script, or an MDC export (.json /
+        .dnadb.json). `database` names the target; without it a file
+        names its own database and a CSV goes to "default"."""
+        result = _run_import(filename, await _import_body(request), role, database, None)
+        return {"message": result.summary(), "database": result.database, "created_database": result.created_database,
+                "tables_created": result.tables_created, "rows_inserted": result.rows_inserted, "warnings": result.warnings}
+
+    @router.post("/chat/attach")
+    async def chat_attach(request: Request, filename: str, session_id: str = "default", role: Role = Depends(_authenticate)) -> dict[str, Any]:
+        """The chat window's paperclip: the same import, except a CSV goes
+        into the database this chat session is working in, and a database
+        the import creates becomes the session's current one."""
+        result = _run_import(filename, await _import_body(request), role, None, chat_engine.session_database(session_id))
+        if result.created_database:
+            chat_engine.switch_session_database(session_id, result.database)
+        return {"message": result.summary(), "database": result.database, "created_database": result.created_database}
+
     @router.get("/objects", dependencies=[Depends(_require(Permission.READ))])
     def list_objects(type: str | None = None, tier: str | None = None) -> dict[str, Any]:
         object_type = DataType(type) if type else None
@@ -273,9 +348,9 @@ def create_app(manager: DatabaseManager, token_store: TokenStore | None = None) 
         return {"objects": service.list_objects(object_type=object_type, storage_tier=storage_tier)}
 
     @router.post("/chat", dependencies=[Depends(_require(Permission.WRITE))])
-    def chat(body: ChatRequest) -> dict[str, Any]:
-        reply = chat_engine.handle(body.session_id, body.message)
-        return {"message": reply.message, "data": reply.data}
+    def chat(body: ChatRequest, role: Role = Depends(_authenticate)) -> dict[str, Any]:
+        reply = chat_engine.handle(body.session_id, body.message, role=role)
+        return {"message": reply.message, "data": reply.data, "download": reply.download}
 
     @router.post("/objects", status_code=201, dependencies=[Depends(_require(Permission.WRITE))])
     async def upload_object(request: Request, filename: str | None = None) -> dict[str, Any]:

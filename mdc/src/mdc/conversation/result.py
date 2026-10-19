@@ -15,3 +15,6 @@ from typing import Any
 class TurnResult:
     message: str
     data: Any = None
+    # {"url": ..., "filename": ...} - a file the chat UI offers for download
+    # (an export); the URL is an authenticated API route, not a public link.
+    download: dict[str, str] | None = None

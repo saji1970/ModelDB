@@ -13,11 +13,17 @@ a real injection surface; a validated field list has no such risk.
 from __future__ import annotations
 
 from mdc.conversation.result import TurnResult
-from mdc.conversation.state import StorageConversationState
+from mdc.conversation.state import PendingSchema, StorageConversationState
 from mdc.databases.errors import DatabaseAlreadyExistsError, DatabaseNotFoundError, InvalidDatabaseNameError
 from mdc.databases.manager import DatabaseManager
 from mdc.model.operation import CreateOperation, ReadOperation
+from urllib.parse import quote
+
 from mdc.nlp.db_command import DatabaseCommand, DatabaseIntent
+from mdc.portability.apply import prepare_import, resolve_database_name
+from mdc.portability.plan import ExportOptionError, ImportConflictError, ImportDataError, ImportFormatError, ImportPlan
+from mdc.portability.writers import export_filename, resolve_export_options
+from mdc.security.roles import Permission, role_has
 from mdc.schema.registry import CollectionNotFoundError, SchemaError
 
 _SHOW_DATA_LIMIT = 20
@@ -38,8 +44,18 @@ def _switch_to(state: StorageConversationState, name: str) -> None:
     state.pending_delete = None
 
 
+def _lacks(state: StorageConversationState, permission: Permission) -> str | None:
+    """A refusal message if this turn's caller (state.role) may not do
+    `permission`; None when allowed - or when there is no role (CLI, tests)."""
+    if state.role is not None and not role_has(state.role, permission):
+        return f"Your role ({state.role.value}) doesn't include the {permission.value} permission, so I can't do that."
+    return None
+
+
 def _handle_create_database(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
     assert command.database_name is not None
+    if (refusal := _lacks(state, Permission.CREATE_DATABASE)) is not None:
+        return TurnResult(refusal)
     try:
         manager.create(command.database_name)
     except (DatabaseAlreadyExistsError, InvalidDatabaseNameError) as exc:
@@ -74,6 +90,8 @@ def _handle_describe_database(state: StorageConversationState, manager: Database
 
 
 def _handle_create_table(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
+    if (refusal := _lacks(state, Permission.CREATE_TABLE)) is not None:
+        return TurnResult(refusal)
     assert command.table_name is not None
     handle = manager.get(state.current_database)
     if handle.schema_registry.has_collection(command.table_name):
@@ -197,6 +215,95 @@ def _handle_find(state: StorageConversationState, manager: DatabaseManager, comm
     return TurnResult(f"{' and '.join(parts)} matched{term_desc}{suffix}.", data=(rows + documents)[:_FIND_LIMIT])
 
 
+_TRANSFER_HELP = (
+    "Export - say what and how, e.g. \"export database as csv\", \"export database as sql\", "
+    "\"export database as excel\", \"export schema as markdown\" (a design document with an ER diagram), "
+    "\"export schema as er diagram\", \"export database with data\" (an MDC export file you can import into "
+    "another instance), \"export table <name> as csv\", \"export database <name> as sql\". "
+    "Import - click the paperclip next to the message box and pick a .md design document, .csv, .sql script, "
+    "or an MDC export (.json / .dnadb.json). A .csv becomes a table in the current database; the others create a database."
+)
+
+
+def _handle_transfer_help(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
+    return TurnResult(_TRANSFER_HELP)
+
+
+def _handle_export(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
+    name = command.database_name or state.current_database
+    try:
+        handle = manager.get(name)
+    except (DatabaseNotFoundError, InvalidDatabaseNameError) as exc:
+        return TurnResult(str(exc))
+    try:
+        fmt, scope = resolve_export_options(command.export_format, command.export_scope, table=command.table_name)
+    except ExportOptionError as exc:
+        return TurnResult(str(exc))
+    if command.table_name and not handle.schema_registry.has_collection(command.table_name):
+        return TurnResult(f'Database "{name}" has no table "{command.table_name}".')
+    if not handle.schema_registry.list_collections():
+        return TurnResult(f'Database "{name}" has no tables yet, so there is nothing to export.')
+    filename = export_filename(name, fmt, scope, command.table_name)
+    url = f"/databases/{quote(name)}/export?format={fmt}&scope={scope}" + (f"&table={quote(command.table_name)}" if command.table_name else "")
+    return TurnResult(f"Your export is ready: {filename}", download={"url": url, "filename": filename})
+
+
+
+def _describe_plan(plan: ImportPlan, database: str, creating_database: bool) -> str:
+    lines = [f'Here is the design - {"new " if creating_database else ""}database "{database}":']
+    for table in plan.tables:
+        assert table.columns is not None
+        lines.append(f"  {table.name}: " + ", ".join(f"{c.name} {c.datatype}{'*' if c.required else ''}" for c in table.columns))
+    if any(c.required for t in plan.tables for c in (t.columns or [])):
+        lines.append("  (* required)")
+    lines += [f"- {w}" for w in plan.warnings]
+    lines.append("Create it? Reply yes to create it - anything else drops it.")
+    return "\n".join(lines)
+
+
+def _plan_refusal(exc: Exception) -> TurnResult:
+    if isinstance(exc, ImportConflictError):
+        return TurnResult("I can't create that: " + str(exc) + ".")
+    return TurnResult(str(exc))
+
+
+def _handle_design_schema(state: StorageConversationState, manager: DatabaseManager, command: DatabaseCommand) -> TurnResult:
+    """A prompt or ER diagram described a schema: validate it, show it, and
+    wait for "yes" - never create anything on the turn it is proposed."""
+    if command.design_error is not None:
+        return TurnResult(f"I couldn't read that ER diagram: {command.design_error}")
+    plan = command.design_plan
+    assert plan is not None
+    database = resolve_database_name(plan, None, state.current_database, "schema")
+    try:
+        prepared = prepare_import(manager, plan, database)
+    except (ImportFormatError, ImportDataError, ImportConflictError) as exc:
+        return _plan_refusal(exc)
+    for permission in sorted(prepared.required_permissions, key=lambda p: p.value):
+        if (refusal := _lacks(state, permission)) is not None:
+            return TurnResult(refusal)
+    state.pending_schema = PendingSchema(plan=plan, database=database)
+    return TurnResult(_describe_plan(plan, database, creating_database=not prepared.db_exists))
+
+
+def apply_pending_schema(state: StorageConversationState, manager: DatabaseManager) -> TurnResult:
+    """The "yes": validate again (the databases may have changed since the
+    proposal) and create it."""
+    pending, state.pending_schema = state.pending_schema, None
+    assert pending is not None
+    try:
+        prepared = prepare_import(manager, pending.plan, pending.database)
+    except (ImportFormatError, ImportDataError, ImportConflictError) as exc:
+        return _plan_refusal(exc)
+    for permission in sorted(prepared.required_permissions, key=lambda p: p.value):
+        if (refusal := _lacks(state, permission)) is not None:
+            return TurnResult(refusal)
+    result = prepared.apply()
+    if result.created_database:
+        _switch_to(state, result.database)
+    return TurnResult(result.summary())
+
+
 _HANDLERS = {
     DatabaseIntent.CREATE_DATABASE: _handle_create_database,
     DatabaseIntent.USE_DATABASE: _handle_use_database,
@@ -207,4 +314,7 @@ _HANDLERS = {
     DatabaseIntent.SHOW_DATA: _handle_show_data,
     DatabaseIntent.INSERT: _handle_insert,
     DatabaseIntent.FIND: _handle_find,
+    DatabaseIntent.EXPORT: _handle_export,
+    DatabaseIntent.TRANSFER_HELP: _handle_transfer_help,
+    DatabaseIntent.DESIGN_SCHEMA: _handle_design_schema,
 }
