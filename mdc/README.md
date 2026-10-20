@@ -487,7 +487,7 @@ python -m mdc serve --kafka-bootstrap broker:9092 --kafka-topic mdc.stats --kafk
 
 - `GET /metrics` Prometheus text, `GET /stats` JSON, `GET /stream` Server-Sent Events (a snapshot every `MDC_METRICS_INTERVAL` seconds), `GET /healthz`. With `MDC_METRICS_TOKEN` set, everything but `/healthz` needs a bearer token.
 - A snapshot has process CPU and memory, system CPU/memory/disk, API request counts, and per database: file size, rows per table, objects by tier, ARCHIVE blocks, streams, events. Memory and CPU are current values with `psutil` (a dependency); without it they fall back to peak memory and CPU time.
-- Kafka: one JSON message per snapshot, keyed by host name. You run the broker and install `confluent-kafka` or `kafka-python` (MDC bundles neither; `pip install .[kafka]` adds confluent-kafka). A failed publish is counted and retried; it never stops the server. No broker authentication or TLS settings yet, and the Kafka path is tested with a stand-in producer rather than a live broker.
+- Kafka: one JSON message per snapshot, keyed by host name. You run the broker and install `confluent-kafka` or `kafka-python` (MDC bundles neither; `pip install .[kafka]` adds confluent-kafka). A failed publish is counted and retried; it never stops the server. No broker authentication or TLS settings yet, and the Kafka path is tested with a stand-in producer and against the real client libraries with no broker present, never against a live broker.
 - The container reads `MDC_METRICS_PORT`, `MDC_METRICS_HOST`, `MDC_METRICS_TOKEN`, `MDC_METRICS_INTERVAL`, `MDC_KAFKA_BOOTSTRAP`, `MDC_KAFKA_TOPIC`, `MDC_KAFKA_INTERVAL`. Source: `src/mdc/monitoring/`.
 
 ## Deployment (Docker and Railway)

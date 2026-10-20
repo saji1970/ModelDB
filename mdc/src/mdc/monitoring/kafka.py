@@ -28,6 +28,9 @@ class Producer(Protocol):
     def flush(self, timeout: float) -> None: ...
 
 
+_SEND_TIMEOUT = 10.0
+
+
 class _ConfluentProducer:
     def __init__(self, producer):
         self._p = producer
@@ -35,23 +38,41 @@ class _ConfluentProducer:
     def send(self, topic: str, key: bytes, value: bytes) -> None:
         errors: list[Any] = []
         self._p.produce(topic, value=value, key=key, on_delivery=lambda err, _msg: err and errors.append(err))
-        self._p.flush(10)
+        remaining = self._p.flush(_SEND_TIMEOUT)
         if errors:
             raise RuntimeError(str(errors[0]))
+        if remaining:
+            # Not acknowledged in time. Cancel it, so a broker that comes back does
+            # not suddenly receive a pile of stale snapshots.
+            self._p.purge()
+            self._p.flush(1)
+            raise RuntimeError(f"the broker did not acknowledge the message within {_SEND_TIMEOUT:g}s")
 
     def flush(self, timeout: float) -> None:
         self._p.flush(timeout)
 
 
 class _KafkaPythonProducer:
-    def __init__(self, producer):
-        self._p = producer
+    """kafka-python connects when constructed and fails if no broker answers, so
+    the producer is created on first use and retried until one does - a broker
+    that is down when MDC starts must not stop MDC."""
+
+    def __init__(self, bootstrap_servers: list[str], options: dict[str, Any]):
+        self._servers, self._options, self._p = bootstrap_servers, options, None
+
+    def _producer(self):
+        if self._p is None:
+            from kafka import KafkaProducer
+
+            self._p = KafkaProducer(bootstrap_servers=self._servers, **self._options)
+        return self._p
 
     def send(self, topic: str, key: bytes, value: bytes) -> None:
-        self._p.send(topic, key=key, value=value).get(timeout=10)
+        self._producer().send(topic, key=key, value=value).get(timeout=_SEND_TIMEOUT)
 
     def flush(self, timeout: float) -> None:
-        self._p.flush(timeout)
+        if self._p is not None:
+            self._p.flush(timeout)
 
 
 def build_producer(bootstrap_servers: str, **options: Any) -> Producer:
@@ -59,15 +80,14 @@ def build_producer(bootstrap_servers: str, **options: Any) -> Producer:
     try:
         from confluent_kafka import Producer as ConfluentProducer
 
-        return _ConfluentProducer(ConfluentProducer({"bootstrap.servers": bootstrap_servers, **options}))
+        return _ConfluentProducer(ConfluentProducer({"bootstrap.servers": bootstrap_servers, "message.timeout.ms": 15000, **options}))
     except ImportError:
         pass
     try:
-        from kafka import KafkaProducer
-
-        return _KafkaPythonProducer(KafkaProducer(bootstrap_servers=bootstrap_servers.split(","), **options))
+        import kafka  # noqa: F401  (only to find out it is installed)
     except ImportError:
         raise KafkaUnavailableError("Publishing to Kafka needs a client library: pip install confluent-kafka (or kafka-python).") from None
+    return _KafkaPythonProducer(bootstrap_servers.split(","), options)
 
 
 class KafkaPublisher:

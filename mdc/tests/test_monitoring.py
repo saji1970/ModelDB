@@ -360,6 +360,30 @@ def test_a_missing_kafka_library_says_what_to_install(monkeypatch):
         build_producer("localhost:9092")
 
 
+def test_confluent_adapter_counts_an_unreachable_broker_as_a_failure(populated, monkeypatch):
+    pytest.importorskip("confluent_kafka")
+    import mdc.monitoring.kafka as kafka_module
+
+    monkeypatch.setattr(kafka_module, "_SEND_TIMEOUT", 1.0)
+    producer = build_producer("127.0.0.1:1")  # nothing listens there
+    assert type(producer).__name__ == "_ConfluentProducer"
+    publisher = KafkaPublisher(StatsCollector(populated, cache_seconds=0), producer)
+    assert publisher.publish_once() is False  # not reported as published just because the library accepted it
+    assert publisher.published == 0 and publisher.errors == 1 and "did not acknowledge" in publisher.last_error
+
+
+def test_kafka_python_adapter_does_not_need_a_broker_at_startup(monkeypatch):
+    pytest.importorskip("kafka")
+    import builtins
+
+    real = builtins.__import__
+    monkeypatch.setattr(builtins, "__import__", lambda name, *a, **kw: (_ for _ in ()).throw(ImportError(name)) if name == "confluent_kafka" else real(name, *a, **kw))
+    producer = build_producer("127.0.0.1:1,127.0.0.1:2")
+    assert type(producer).__name__ == "_KafkaPythonProducer"
+    assert producer._servers == ["127.0.0.1:1", "127.0.0.1:2"] and producer._p is None  # nothing connected yet
+    producer.flush(1)  # and flushing before the first send is harmless
+
+
 # -- settings and startup ----------------------------------------------------------------------
 
 
