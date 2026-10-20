@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, Response
@@ -65,6 +66,7 @@ from mdc.events import (
 )
 from mdc.model.operation import CreateOperation, ReadOperation
 from mdc.models.errors import ModelNotFoundError, TensorNotFoundError
+from mdc.monitoring.collector import RequestStats
 from mdc.nlp.db_command import VALID_FIELD_TYPES, DatabaseCommand, DatabaseIntent
 from mdc.portability.apply import ImportResult, prepare_import, resolve_database_name
 from mdc.portability.plan import ExportOptionError, ImportConflictError, ImportDataError, ImportFormatError
@@ -155,6 +157,24 @@ def create_app(manager: DatabaseManager, token_store: TokenStore | None = None) 
         allow_headers=["*"],
         expose_headers=["Content-Disposition"],  # so a cross-origin UI can read an export's filename
     )
+
+    # Request counters for the monitoring port (`mdc.monitoring`). A plain ASGI
+    # middleware, added last so it also times CORS handling; it never reads
+    # a request or response body.
+    request_stats = RequestStats()
+    app.state.request_stats = request_stats
+
+    @app.middleware("http")
+    async def _count_requests(request: Request, call_next):
+        request_stats.started()
+        began = time.perf_counter()
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            return response
+        finally:
+            request_stats.finished(request.method, status, time.perf_counter() - began)
 
     def _not_found(exc: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(exc))

@@ -12,4 +12,6 @@ COPY deploy/serve.py deploy/serve.py
 ENV PYTHONPATH=/app/mdc/src HOME=/data PORT=8000 MODELDB_DATABASE=/data/mdc.duckdb PYTHONUNBUFFERED=1
 WORKDIR /app/mdc
 EXPOSE 8000
+# Optional: set MDC_METRICS_PORT (e.g. 9464) to publish live statistics on a second, non-public port; see docs.
+
 CMD ["python", "/app/deploy/serve.py"]

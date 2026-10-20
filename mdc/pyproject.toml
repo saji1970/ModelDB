@@ -20,9 +20,13 @@ dependencies = [
     "uvicorn>=0.30",
     "openpyxl>=3.1",
     "cryptography>=42.0",
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]
+kafka = [
+    "confluent-kafka>=2.3",
+]
 dev = [
     "pytest>=8.0",
     "httpx>=0.27",

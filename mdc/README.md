@@ -475,6 +475,21 @@ Every stream and every archived object in every database is re-sealed in memory 
 
 Not covered: rotating while the server runs; hardware key storage.
 
+## Monitoring and Kafka
+
+An optional **separate port** publishes live statistics, and the same snapshots can stream to **Kafka**. Both are off until asked for; the port is read-only and carries counts and sizes only, never data, keys or tokens.
+
+```bash
+python -m mdc serve --metrics-port 9464                       # /metrics, /stats, /stream, /healthz on 127.0.0.1
+MDC_METRICS_TOKEN=... python -m mdc serve --metrics-port 9464 --metrics-host 0.0.0.0
+python -m mdc serve --kafka-bootstrap broker:9092 --kafka-topic mdc.stats --kafka-interval 10
+```
+
+- `GET /metrics` Prometheus text, `GET /stats` JSON, `GET /stream` Server-Sent Events (a snapshot every `MDC_METRICS_INTERVAL` seconds), `GET /healthz`. With `MDC_METRICS_TOKEN` set, everything but `/healthz` needs a bearer token.
+- A snapshot has process CPU and memory, system CPU/memory/disk, API request counts, and per database: file size, rows per table, objects by tier, ARCHIVE blocks, streams, events. Memory and CPU are current values with `psutil` (a dependency); without it they fall back to peak memory and CPU time.
+- Kafka: one JSON message per snapshot, keyed by host name. You run the broker and install `confluent-kafka` or `kafka-python` (MDC bundles neither; `pip install .[kafka]` adds confluent-kafka). A failed publish is counted and retried; it never stops the server. No broker authentication or TLS settings yet, and the Kafka path is tested with a stand-in producer rather than a live broker.
+- The container reads `MDC_METRICS_PORT`, `MDC_METRICS_HOST`, `MDC_METRICS_TOKEN`, `MDC_METRICS_INTERVAL`, `MDC_KAFKA_BOOTSTRAP`, `MDC_KAFKA_TOPIC`, `MDC_KAFKA_INTERVAL`. Source: `src/mdc/monitoring/`.
+
 ## Deployment (Docker and Railway)
 
 ```bash
