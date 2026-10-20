@@ -124,9 +124,10 @@ class PreparedImport:
             manager.persist_schema(self.database)
         inserted: dict[str, int] = {}
         for spec in self._plan.tables:
-            for row in spec.rows:
-                handle.engine.create(CreateOperation(collection=spec.name, data=_clean(row, handle.schema_registry, spec.name), record_id=row.record_id))
             if spec.rows:
+                handle.engine.create_many(
+                    [CreateOperation(collection=spec.name, data=_clean(row, handle.schema_registry, spec.name), record_id=row.record_id) for row in spec.rows]
+                )
                 inserted[spec.name] = len(spec.rows)
         warnings = list(self._plan.warnings) + [f'Table "{t}" already existed, so it was kept as it is and rows were added to it.' for t in self._skipped_existing]
         return ImportResult(self.database, not self.db_exists, [t.name for t in self._create], inserted, warnings)

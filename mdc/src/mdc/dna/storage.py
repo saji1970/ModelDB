@@ -17,10 +17,13 @@ the public 2-bit-per-base mapping.
 
 Persistence: constructed with `persist=<a durable StorageBackend>` (the
 router passes the database's own DuckDB store), every block is also written
-there - the A/C/G/T copies as JSON, under the id `dna:<block_id>`, with the
-caller's metadata and the plaintext checksum alongside - and read back from
-there, so archived objects survive a restart and are removed with the
-database. Without `persist` the backend is a pure in-memory simulation (the
+there - under the id `dna:<block_id>`, with the caller's metadata and the
+plaintext checksum alongside - and read back from there, so archived objects
+survive a restart and are removed with the database. The stored form is the
+2-bit-per-base sequence packed four bases to the byte, which is the encrypted
+bytes themselves: writing the same thing as the letters A/C/G/T takes four
+times the space and adds nothing, so the letters are produced on demand
+(`sequences_for`) and by the research tooling, not stored. Without `persist` the backend is a pure in-memory simulation (the
 research tooling and unit tests use it that way). Only ciphertext is ever
 stored; reading needs the same key, and `rotate_key` re-keys what is stored.
 """
@@ -30,6 +33,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import struct
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -43,6 +47,25 @@ from mdc.storage.interface import StorageBackend
 
 
 _PERSIST_PREFIX = "dna:"
+_PACK_MAGIC = b"MDCD1"  # header of the packed form: magic, copies (1 byte), copy length (4 bytes)
+
+
+def _pack(copies: list[bytes]) -> bytes:
+    return _PACK_MAGIC + struct.pack(">BI", len(copies), len(copies[0])) + b"".join(copies)
+
+
+def _unpack(blob: bytes) -> list[bytes]:
+    """The copies in a stored block. Also reads the form the first persistent
+    archive wrote (a JSON list of A/C/G/T strings), so nothing stored earlier is lost."""
+    if blob.startswith(_PACK_MAGIC):
+        head = len(_PACK_MAGIC) + 5
+        count, length = struct.unpack(">BI", blob[len(_PACK_MAGIC) : head])
+        body = blob[head:]
+        if count < 1 or len(body) != count * length:
+            raise DecryptionError("stored archive block is damaged (its length does not match its header)")
+        return [body[i * length : (i + 1) * length] for i in range(count)]
+    return [decode(seq) for seq in json.loads(blob)["sequences"]]
+
 _PERSIST_MARK = {"dna_archive": "1"}
 
 
@@ -89,18 +112,17 @@ class DNAStorageBackend(StorageBackend):
         checksum = hashlib.sha256(payload).hexdigest()
         ciphertext = encrypt(key, payload)
         copies = self._ecc.encode(ciphertext) if self._ecc else [ciphertext]
-        sequences = [encode(copy) for copy in copies]
         meta = dict(metadata) if metadata else {}
         if self._persist is not None:
             self._persist.put(
                 _PERSIST_PREFIX + block_id,
-                json.dumps({"copies": len(sequences), "sequences": sequences}).encode("ascii"),
+                _pack(copies),
                 metadata={**_PERSIST_MARK, "block": block_id, "checksum": checksum, "meta": meta},
             )
             self._metadata[block_id], self._checksums[block_id] = meta, checksum
             self._created_at[block_id] = self._persist.metadata(_PERSIST_PREFIX + block_id)["created_at"]
             return checksum
-        self._sequences[block_id] = sequences
+        self._sequences[block_id] = [encode(copy) for copy in copies]
         self._metadata[block_id] = meta
         self._checksums[block_id] = checksum
         self._created_at.setdefault(block_id, datetime.now(timezone.utc))
@@ -110,16 +132,27 @@ class DNAStorageBackend(StorageBackend):
         return self._read(block_id, self._key)
 
     def _read(self, block_id: str, key: bytes) -> bytes:
-        sequences = self._require(block_id)
-        if len(sequences) == 1:
-            return decrypt(key, decode(sequences[0]))
+        copies = self._copies(block_id)
+        if len(copies) == 1:
+            return decrypt(key, copies[0])
         # Decode with the number of copies the block was written with, not the
         # current setting: a block stays readable if ecc_copies is changed.
-        ecc = self._ecc if self._ecc is not None and self._ecc.copies == len(sequences) else RepetitionECC(copies=len(sequences))
-        result = ecc.decode([decode(seq) for seq in sequences])
+        ecc = self._ecc if self._ecc is not None and self._ecc.copies == len(copies) else RepetitionECC(copies=len(copies))
+        result = ecc.decode(copies)
         if result.data is None:
             raise KeyError(f"block {block_id!r} could not be recovered")
         return decrypt(key, result.data)
+
+    def _copies(self, block_id: str) -> list[bytes]:
+        """The stored copies of a block, as bytes (the packed bases)."""
+        if self._persist is not None:
+            if block_id not in self._metadata:
+                raise KeyError(f"No block found for block_id={block_id!r}")
+            try:
+                return _unpack(self._persist.get(_PERSIST_PREFIX + block_id))
+            except KeyError:
+                raise KeyError(f"No block found for block_id={block_id!r}") from None
+        return [decode(seq) for seq in self._require(block_id)]
 
     def exists(self, block_id: str) -> bool:
         return block_id in self._metadata if self._persist is not None else block_id in self._sequences
@@ -230,13 +263,9 @@ class DNAStorageBackend(StorageBackend):
         return ECCDecodeResult(data=plaintext, recovered=result.recovered, corrected_byte_count=result.corrected_byte_count, usable_copies=result.usable_copies)
 
     def _require(self, block_id: str) -> list[str]:
+        """The block's sequences as A/C/G/T text (for research tooling)."""
         if self._persist is not None:
-            if block_id not in self._metadata:
-                raise KeyError(f"No block found for block_id={block_id!r}")
-            try:
-                return json.loads(self._persist.get(_PERSIST_PREFIX + block_id))["sequences"]
-            except KeyError:
-                raise KeyError(f"No block found for block_id={block_id!r}") from None
+            return [encode(copy) for copy in self._copies(block_id)]
         if block_id not in self._sequences:
             raise KeyError(f"No block found for block_id={block_id!r}")
         return self._sequences[block_id]
