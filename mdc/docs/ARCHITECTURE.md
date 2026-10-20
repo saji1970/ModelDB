@@ -166,6 +166,7 @@ reaches storage only through it.
   stores a sealed key check so a wrong key is told apart from tampering, and
   `rotate_key` re-seals every stream under a new key (`mdc key rotate`). Accounts share the role vocabulary but are not a login yet: access is
   decided by the role of the token presented.
+- **`monitoring/`** - read-only statistics. `collector.py` builds a snapshot (process and system CPU/memory, API request counters fed by a middleware in `api/app.py`, and per database: file size, rows, objects by tier, ARCHIVE blocks, streams), cached for 2 seconds; `server.py` serves it on its own port (`/metrics` Prometheus, `/stats`, `/stream` SSE, `/healthz`); `kafka.py` publishes JSON snapshots from a background thread; `runtime.py` starts them from flags or `MDC_METRICS_*` / `MDC_KAFKA_*`. Off unless asked for.
 - **`api/`** - the FastAPI app (`app.py`), the chat engine (`chat.py`, one per
   session state, shared by the Explorer and `POST /chat`), and the Storage
   Explorer page (`static/index.html`). `deploy/serve.py` runs the same app in a

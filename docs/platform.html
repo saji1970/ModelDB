@@ -43,6 +43,7 @@
     "Import from Markdown, CSV, SQL, ER diagram and MDC export; export to CSV, SQL, Excel, design document and ER diagram",
     "Schema design from a prompt or ER diagram",
     "Event-sourced agent state streams with time travel",
+    "Live statistics on a separate port (Prometheus, JSON, event stream) and optional Kafka publishing",
     "Confirmed deletion of databases, tables, rows and streams",
     "Storage Explorer browser UI",
     "Bearer-token REST API with role-based access",
@@ -228,6 +229,7 @@
       <a href="#explorer">Storage Explorer</a>
       <a href="#security">Security &amp; access</a>
       <a href="#encryption">Encryption keys</a>
+      <a href="#monitoring">Monitoring &amp; Kafka</a>
       <a href="#deployment">Deployment</a>
     </div>
     <div class="grp">
@@ -258,6 +260,7 @@
         <tr><td>Deleting</td><td>Drop a database or table, delete a row or stream - after it shows what would be lost</td><td><a href="#deleting">more</a></td></tr>
         <tr><td>Storage Explorer</td><td>A browser app: browse by type, tier or database; inspect, upload, move, delete; a chat panel with import and download</td><td><a href="#explorer">more</a></td></tr>
         <tr><td>REST API and integrations</td><td>Bearer-token API for RASA or your own UI, four roles, structured endpoints for tables, rows, streams, import and export</td><td><a href="#rest-api">more</a></td></tr>
+        <tr><td>Monitoring</td><td>A separate port with Prometheus metrics, JSON and a live event stream (CPU, memory, per-database sizes, objects, streams); optional Kafka publishing</td><td><a href="#monitoring">more</a></td></tr>
         <tr><td>Deployment</td><td>Dockerfile and Railway config, health check, persistent volume</td><td><a href="#deployment">more</a></td></tr>
       </table>
     </section>
@@ -654,6 +657,67 @@ python -m mdc key rotate --database data/mdc.duckdb --new-key-file new.key</code
       </table>
     </section>
 
+    <section id="monitoring">
+      <h2>Monitoring: live statistics &amp; Kafka</h2>
+      <p>MDC can publish what it is doing on a <strong>separate port</strong>, and stream the same statistics to <strong>Kafka</strong>, so a dashboard or monitoring system can watch it. Both are off until you ask. The port is read-only, and the numbers are counts and sizes only: never data, keys or tokens.</p>
+
+      <h3>Turn it on</h3>
+<pre class="code-block"><code># a metrics port, kept to this machine
+python -m mdc serve --metrics-port 9464
+
+# reachable by a monitoring server, and protected
+MDC_METRICS_TOKEN=choose-a-long-random-value \
+  python -m mdc serve --metrics-port 9464 --metrics-host 0.0.0.0
+
+# also stream to Kafka every 10 seconds
+pip install confluent-kafka        # or kafka-python
+python -m mdc serve --kafka-bootstrap broker1:9092 --kafka-topic mdc.stats</code></pre>
+      <p>The container reads the same settings from environment variables, so on Docker or Railway you set variables instead of flags:</p>
+      <table>
+        <tr><th>Setting (flag / variable)</th><th>Default</th><th>What it does</th></tr>
+        <tr><td><code>--metrics-port</code> / <code>MDC_METRICS_PORT</code></td><td>off</td><td>The port to publish on. Separate from the API port</td></tr>
+        <tr><td><code>--metrics-host</code> / <code>MDC_METRICS_HOST</code></td><td><code>127.0.0.1</code></td><td>The address to bind. Use <code>0.0.0.0</code> only on a private network or with a token</td></tr>
+        <tr><td><code>MDC_METRICS_TOKEN</code></td><td>none</td><td>If set, every path except <code>/healthz</code> needs <code>Authorization: Bearer &lt;token&gt;</code></td></tr>
+        <tr><td><code>MDC_METRICS_INTERVAL</code></td><td>5</td><td>Seconds between events on <code>/stream</code></td></tr>
+        <tr><td><code>--kafka-bootstrap</code> / <code>MDC_KAFKA_BOOTSTRAP</code></td><td>off</td><td>Kafka brokers, <code>host:port[,host:port]</code></td></tr>
+        <tr><td><code>--kafka-topic</code> / <code>MDC_KAFKA_TOPIC</code></td><td><code>mdc.stats</code></td><td>The topic to publish to</td></tr>
+        <tr><td><code>--kafka-interval</code> / <code>MDC_KAFKA_INTERVAL</code></td><td>10</td><td>Seconds between snapshots</td></tr>
+      </table>
+      <p>On startup the server prints the address it is publishing on. A bad setting (a taken port, a missing Kafka library) stops <code>mdc serve</code> with a message; in the container it is logged and the database still starts.</p>
+
+      <h3>What the port serves</h3>
+      <table>
+        <tr><th>Path</th><th>Returns</th></tr>
+        <tr><td><code>GET /metrics</code></td><td>Prometheus text format, for Prometheus, Grafana Agent, Datadog and similar scrapers</td></tr>
+        <tr><td><code>GET /stats</code></td><td>The whole snapshot as JSON</td></tr>
+        <tr><td><code>GET /stream</code></td><td>Server-Sent Events: a JSON snapshot every <code>MDC_METRICS_INTERVAL</code> seconds for as long as the client stays connected (<code>curl -N</code>, or a browser <code>EventSource</code>)</td></tr>
+        <tr><td><code>GET /healthz</code></td><td><code>ok</code>. Never needs the token</td></tr>
+      </table>
+
+      <h3>What is in a snapshot</h3>
+      <table>
+        <tr><th>Section</th><th>Contents</th></tr>
+        <tr><td>Process</td><td>CPU time (user and system), CPU percent since the previous snapshot, resident and virtual memory, threads</td></tr>
+        <tr><td>System</td><td>CPU percent and count, load average, memory total, available and percent, and total, used and free space on the data disk</td></tr>
+        <tr><td>Requests</td><td>API requests handled by status class and method, in flight, total and slowest time. Counted for the API port, not the metrics port</td></tr>
+        <tr><td>Each database</td><td>File size, blocks and payload bytes, memory held by the database engine, rows per table, objects (by tier and type), ARCHIVE blocks, streams and events</td></tr>
+        <tr><td>Totals</td><td>Databases, rows, objects, streams, events and file bytes across all of them</td></tr>
+        <tr><td>Kafka</td><td>Messages published, failures, the last error</td></tr>
+      </table>
+<pre class="code-block"><code>mdc_process_resident_memory_bytes 97271808
+mdc_process_cpu_seconds_total{mode="user"} 0.263
+mdc_database_file_bytes{database="default"} 12288
+mdc_table_rows{database="default",table="merchants"} 3
+mdc_database_objects_by_tier{database="default",tier="ARCHIVE"} 1
+mdc_http_requests_total{status_class="2xx"} 1</code></pre>
+      <p>For CPU in Prometheus, graph <code>rate(mdc_process_cpu_seconds_total[1m])</code>: it is exact however often you scrape. <code>mdc_process_cpu_percent</code> is measured between snapshots, and snapshots are shared for 2 seconds, so very frequent readers see the same value.</p>
+
+      <h3>Kafka</h3>
+      <p>MDC publishes one JSON message per snapshot (the same JSON as <code>/stats</code>), keyed by the host name so a topic shared by several servers keeps each one's messages in order. It is a producer only: you run the broker, create the topic (or let your broker auto-create it), and install a client library, <code>confluent-kafka</code> (preferred) or <code>kafka-python</code>. MDC does not bundle one. A failed publish is counted (<code>mdc_kafka_errors_total</code>) and retried at the next interval; a broker outage never stops the database. Authentication and TLS to the broker are not configurable yet: it connects with the library's defaults.</p>
+
+      <div class="callout"><strong>What this does not do</strong>It is not alerting: nothing here decides a number is bad. It has no history of its own, so keep it in Prometheus or Kafka. Row counts scan each database, which is why snapshots are cached for 2 seconds; with very large databases, scrape every 15 to 60 seconds. The Kafka path is tested with a stand-in producer, and the two client adapters were run against the real <code>confluent-kafka</code> and <code>kafka-python</code> libraries with no broker present (they report the failure correctly), but it has never been run against a live broker. Counts of the metrics port's own requests are not included, and the port serves plain HTTP: put it behind your network's TLS if it leaves a private network.</div>
+    </section>
+
     <section id="deployment">
       <h2>Deployment (Docker &amp; Railway)</h2>
       <pre class="code-block"><code>docker build -t modeldb .
@@ -666,6 +730,7 @@ docker run -p 8000:8000 -v modeldb:/data \
         <tr><td><code>MDC_DNA_KEY</code></td><td>64 hex characters: the key for the sealed ARCHIVE tier and streams. Otherwise the key file is used (<a href="#encryption">Encryption keys</a>)</td></tr>
         <tr><td><code>MDC_DNA_KEY_FILE</code></td><td>Where the key file is, instead of <code>HOME/.mdc/dna.key</code> (<code>/data/.mdc/dna.key</code> in the container). Point it off the data volume to keep the key apart from the data</td></tr>
         <tr><td><code>MODELDB_DATABASE</code></td><td>The default database file (default <code>/data/mdc.duckdb</code>); other databases live beside it in <code>databases/</code></td></tr>
+        <tr><td><code>MDC_METRICS_PORT</code>, <code>MDC_METRICS_HOST</code>, <code>MDC_METRICS_TOKEN</code>, <code>MDC_KAFKA_BOOTSTRAP</code>, <code>MDC_KAFKA_TOPIC</code></td><td>Live statistics on a second port and/or into Kafka; off unless set (<a href="#monitoring">Monitoring</a>). The metrics port is not the public one: keep it private or set the token</td></tr>
         <tr><td><code>PORT</code>, <code>HOST</code>, <code>MODELDB_TOKEN_FILE</code></td><td>Listen port, bind address, where a generated token is kept</td></tr>
         <tr><td>Volume at <code>/data</code></td><td>Without one the database, a generated token and the key are lost on every redeploy (the container warns about it)</td></tr>
       </table>
@@ -701,7 +766,7 @@ docker run -p 8000:8000 -v modeldb:/data \
       <table>
         <tr><th>Command</th><th>Does</th></tr>
         <tr><td><code>python -m mdc</code></td><td>The conversational shell (<code>mdc&gt;</code>); slash commands <code>/help</code>, <code>/context</code>, <code>/history</code>, <code>/reset</code>, <code>/exit</code></td></tr>
-        <tr><td><code>python -m mdc serve [--host] [--port] [--database]</code></td><td>The REST API and Storage Explorer</td></tr>
+        <tr><td><code>python -m mdc serve [--host] [--port] [--database] [--metrics-port] [--metrics-host] [--kafka-bootstrap] [--kafka-topic] [--kafka-interval]</code></td><td>The REST API and Storage Explorer, optionally with the metrics port and Kafka publishing (<a href="#monitoring">Monitoring</a>)</td></tr>
         <tr><td><code>python -m mdc db init [--scale small]</code></td><td>Create the schema and seed the synthetic payments data</td></tr>
         <tr><td><code>mdc token issue &lt;name&gt; [--role viewer|editor|db_admin|admin]</code>, <code>token list</code>, <code>token revoke &lt;name&gt;</code></td><td>API tokens</td></tr>
         <tr><td><code>mdc key generate</code>, <code>key show</code>, <code>key rotate --database ... (--generate | --new-key-env VAR | --new-key-file F)</code></td><td>Make a sealing key; show which one is in use (fingerprint only); re-seal every stream and archived object under a new key (<a href="#encryption">Encryption keys</a>)</td></tr>

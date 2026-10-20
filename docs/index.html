@@ -653,6 +653,10 @@ mdc_lite_close(store)</pre></div>
         <p>A REST API for your own UI or NLU (RASA included): every route needs a token, and its role — viewer, editor, db_admin, admin — decides what it may do. <a href="platform.html#security">Read&nbsp;more&nbsp;→</a></p>
       </div>
       <div class="frow">
+        <div><span class="tag">Monitoring</span><h3>A port that keeps publishing</h3></div>
+        <p>An optional second port serves CPU, memory and per-database statistics as Prometheus metrics, JSON and a live event stream, and can publish the same snapshots to Kafka for a dashboard or monitoring system. Read-only, off until you turn it on. <a href="platform.html#monitoring">Read&nbsp;more&nbsp;→</a></p>
+      </div>
+      <div class="frow">
         <div><span class="tag">Deployment</span><h3>Docker and Railway</h3></div>
         <p>A Dockerfile and Railway config with a health check and a persistent volume; the deployed Explorer asks for the API token. <a href="platform.html#deployment">Read&nbsp;more&nbsp;→</a></p>
       </div>
@@ -716,6 +720,7 @@ python -m mdc token issue my-integration --role editor</pre></div>
           <li><a href="platform.html#deleting">Deleting things</a><span>confirmed drops</span></li>
           <li><a href="platform.html#security">Security &amp; access</a><span>tokens and roles</span></li>
           <li><a href="platform.html#encryption">Encryption keys</a><span>setup and rotation</span></li>
+          <li><a href="platform.html#monitoring">Monitoring &amp; Kafka</a><span>metrics port, streaming</span></li>
           <li><a href="platform.html#deployment">Deployment</a><span>Docker, Railway</span></li>
           <li><a href="platform.html#rest-api">REST API</a><span>every route</span></li>
           <li><a href="platform.html#chat-commands">Chat commands</a><span>every sentence it understands</span></li>

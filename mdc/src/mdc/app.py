@@ -204,6 +204,11 @@ def serve(
     database: Path = typer.Option(DEFAULT_DB_PATH, help="Path to the DuckDB file."),
     host: str = typer.Option("127.0.0.1", help="Host to bind."),
     port: int = typer.Option(8000, help="Port to bind."),
+    metrics_port: int = typer.Option(None, "--metrics-port", help="Also publish live statistics on this separate port (/metrics, /stats, /stream). Default: off. Env: MDC_METRICS_PORT."),
+    metrics_host: str = typer.Option(None, "--metrics-host", help="Address for the metrics port (default 127.0.0.1). Env: MDC_METRICS_HOST. A bearer token can be required with MDC_METRICS_TOKEN."),
+    kafka_bootstrap: str = typer.Option(None, "--kafka-bootstrap", help="Publish statistics snapshots to Kafka at host:port[,host:port]. Env: MDC_KAFKA_BOOTSTRAP."),
+    kafka_topic: str = typer.Option(None, "--kafka-topic", help="Kafka topic (default mdc.stats). Env: MDC_KAFKA_TOPIC."),
+    kafka_interval: float = typer.Option(None, "--kafka-interval", help="Seconds between Kafka snapshots (default 10). Env: MDC_KAFKA_INTERVAL."),
 ) -> None:
     """Start the MDC Storage Explorer: the Universal Object API plus its
     browser UI (Windows-Explorer-style browsing + a chat panel wired to
@@ -227,8 +232,33 @@ def serve(
     manager = DatabaseManager(database.parent / "databases", store, load_default_registry())
     web_app = create_app(manager)
 
+    from dataclasses import replace
+
+    from mdc.monitoring import settings_from_env, start_monitoring
+
+    monitoring = None
+    try:
+        settings = settings_from_env()
+        settings = replace(
+            settings,
+            **{k: v for k, v in dict(
+                metrics_port=metrics_port, metrics_host=metrics_host, kafka_bootstrap=kafka_bootstrap,
+                kafka_topic=kafka_topic, kafka_interval=kafka_interval,
+            ).items() if v is not None},
+        )
+        monitoring = start_monitoring(manager, web_app.state.request_stats, settings)
+    except Exception as exc:  # noqa: BLE001 - say what is wrong rather than a traceback
+        console.print(f"[bold red]Monitoring could not start: {exc}[/bold red]")
+        raise typer.Exit(code=1)
+    for line in (monitoring.describe() if monitoring else []):
+        console.print(line, soft_wrap=True)
+
     console.print(f"MDC Storage Explorer: http://{host}:{port}")
-    uvicorn.run(web_app, host=host, port=port)
+    try:
+        uvicorn.run(web_app, host=host, port=port)
+    finally:
+        if monitoring:
+            monitoring.stop()
 
 
 @key_app.command("generate")

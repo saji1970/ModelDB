@@ -59,7 +59,21 @@ database = Path(os.environ.get("MODELDB_DATABASE", "/data/mdc.duckdb"))
 database.parent.mkdir(parents=True, exist_ok=True)
 store = DuckDBStore(database)
 store.init_schema()
-app = create_app(DatabaseManager(database.parent / "databases", store, load_default_registry()))
+manager = DatabaseManager(database.parent / "databases", store, load_default_registry())
+app = create_app(manager)
+
+# Live statistics on a separate port, and/or streamed to Kafka - only when asked for:
+# MDC_METRICS_PORT (and MDC_METRICS_HOST, MDC_METRICS_TOKEN), MDC_KAFKA_BOOTSTRAP. The metrics
+# port is a second port, not the public one: keep it on a private network or require the token.
+from mdc.monitoring import settings_from_env, start_monitoring
+
+try:
+    _monitoring = start_monitoring(manager, app.state.request_stats, settings_from_env())
+except Exception as exc:  # a bad monitoring setting must not stop the database
+    _monitoring = None
+    print(f"ModelDB: monitoring did not start: {exc}", flush=True)
+for _line in (_monitoring.describe() if _monitoring else []):
+    print("ModelDB: " + _line, flush=True)
 
 
 # The Storage Explorer at "/". MDC's own page has an admin token written into it, which is right
