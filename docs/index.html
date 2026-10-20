@@ -406,6 +406,10 @@
     <div class="callout"><strong>Is either one's data actually stored as a DNA molecule?</strong>No. Both encode data as A/C/G/T <em>text</em> — mdc-lite in its on-disk files, MDC Platform in its archive tier — but it's always encrypted first, then represented as base-letter characters in an ordinary file or database. A software simulation, not a physical molecule. No synthesis, no sequencing, no wet lab, anywhere in either codebase.</div>
   </section>
 
+  <section id="vs-database" style="padding-top:0;border-top:none;">
+    <div class="callout"><strong>Against a traditional database</strong>MDC Platform is not a faster or smaller database. Measured on the same 10,000 records it used about 2.7 times PostgreSQL's disk space, inserted about 20 times slower than PostgreSQL, and looked records up in about a second because it has no indexes (so lookups grow with the table). What you get instead is no SQL, no drivers and no managed instance to run: for a small always-on app, about $5 a month on a usage-billed host against about $14 for the smallest Amazon RDS PostgreSQL instance, with RDS's backups and failover not included in that gap. <a href="platform.html#vs-database">Full numbers, assumptions and limits →</a></div>
+  </section>
+
   <section id="mdc-lite">
     <div class="product-head">
       <div class="kicker">Product 1 of 2</div>
@@ -714,6 +718,7 @@ python -m mdc token issue my-integration --role editor</pre></div>
           <li><a href="platform.html">Documentation home</a><span>everything below, in one page</span></li>
           <li><a href="platform.html#installation">Installation</a><span>run it locally</span></li>
           <li><a href="platform.html#concepts">Core concepts</a><span>objects, databases, state and events</span></li>
+          <li><a href="platform.html#vs-database">Versus a traditional database</a><span>size, speed, ease, cost</span></li>
           <li><a href="platform.html#models">AI models &amp; objects</a><span>tensors, tiers</span></li>
           <li><a href="platform.html#multi-db">Databases, tables, search</a><span>and import / export</span></li>
           <li><a href="platform.html#streams">Agent state streams</a><span>event sourcing</span></li>

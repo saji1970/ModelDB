@@ -508,6 +508,12 @@ The image runs `deploy/serve.py`: the same app as `mdc serve`, minus its interac
 
 `data/mdc.duckdb` is the `default` database; every other database is `data/databases/<name>.duckdb` with its table structure in `<name>.schema.json` beside it (this includes tables you add to `default`). Credentials live in `~/.mdc/` (`api_tokens.json`, `users.json`, `dna.key`).
 
+## Compared with a traditional database
+
+Measured on the same 10,000 merchant-style records (one run, Apple M5 laptop, local default-configured PostgreSQL 14 and SQLite, no network): MDC took **3.3 MB** against PostgreSQL's 1.2 MB and SQLite's 0.68 MB (the data as JSON text is 1.6 MB); one-at-a-time inserts averaged **0.75 ms** against 0.03 ms (PostgreSQL) and 0.19 ms (SQLite); and looking up one record or filtering took about **950 ms** against well under a millisecond, because the engine has no indexes and every read loads the whole table, so it grows in proportion to the table (92 ms at 1,000 records). Event streams cost about 1.18x the plain JSON; the ARCHIVE tier stores **4x** the bytes it archives. In return there is no SQL to write, no driver and no managed instance: a small always-on deployment can run on a usage-billed host for about $5 a month, against about $14 for the smallest Amazon RDS PostgreSQL instance (third-party price summaries, 2026-10-20; RDS's backups and failover are not included in that gap, and PostgreSQL in the same kind of container would cost about the same as MDC).
+
+Reproduce it with `python benchmarks/compare_stores.py`; see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/RESULTS.md](benchmarks/RESULTS.md) for the full tables and their limits. The same comparison, with the cost assumptions, is on [the documentation site](https://saji1970.github.io/ModelDB/platform.html#vs-database).
+
 ## Testing
 
 ```bash

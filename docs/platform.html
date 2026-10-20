@@ -208,6 +208,7 @@
       <a href="#installation">Installation</a>
       <a href="#concepts">Core concepts</a>
       <a href="#no-sql">No SQL required</a>
+      <a href="#vs-database">Versus a traditional database</a>
     </div>
     <div class="grp">
       <div class="grp-label">Storing objects</div>
@@ -338,6 +339,64 @@ state as of 12:00  -&gt;  mood=busy  goal="write report"  level=2</code></pre>
         </tr>
       </table>
       <div class="callout"><strong>Why this is safe, not just easier</strong>The natural-language layer never writes SQL itself - an LLM proposes what you might mean, but a deterministic validator decides the actual operation before anything touches storage. "Balance" resolving against three different fields (ledger/available/settlement) triggers a clarifying question instead of a guess; a destructive delete always asks for confirmation first. The easier interface and the safer one are the same interface, on purpose.</div>
+    </section>
+
+    <section id="vs-database">
+      <h2>Versus a traditional database: size, speed, ease, cost</h2>
+      <p>MDC is not a faster or smaller database, and it does not replace one for heavy workloads. What it offers is a different trade: a database you can run and use without SQL, drivers or a managed database service, at the price of space and speed. This page gives the measurements, the access difference, and a cost example with its assumptions, so you can decide whether that trade fits. Everything here is for <strong>MDC Platform</strong>, with <a href="index.html#mdc-lite">mdc-lite</a> measured separately below.</p>
+
+      <h3>Storage size</h3>
+      <p>The same 10,000 merchant-style records (1.6&nbsp;MB as JSON text), measured after each store was loaded and checkpointed:</p>
+      <table>
+        <tr><th>Store</th><th>Data on disk</th><th>Against the plain JSON</th></tr>
+        <tr><td>SQLite</td><td>676 KB</td><td>0.4x</td></tr>
+        <tr><td>PostgreSQL 14 (local)</td><td>1.2 MB (table and key index)</td><td>0.7x</td></tr>
+        <tr><td><strong>MDC Data Engine</strong></td><td><strong>3.3 MB</strong></td><td><strong>2.0x</strong></td></tr>
+      </table>
+      <p>MDC stores each record as its own JSON block with a version, timestamps, a checksum and metadata, so it takes roughly <strong>2.7 times PostgreSQL's space and about 5 times SQLite's</strong> for the same rows. Sealed data costs more or less depending on the feature:</p>
+      <table>
+        <tr><th>What</th><th>Measured</th></tr>
+        <tr><td>Event streams (base plus 1,000 events)</td><td>1.18x the plain JSON: the sealing adds a nonce and tag to each record</td></tr>
+        <tr><td>ARCHIVE tier (A/C/G/T text)</td><td><strong>4.00x</strong> the bytes archived, for compressible and incompressible data alike: each byte becomes four letters in the database file</td></tr>
+        <tr><td><a href="index.html#mdc-lite">mdc-lite</a>, 10,000 entries of about 116 bytes</td><td>6.4 MB for 1.1 MB of values (about 5.8x; a SQLite key-value table takes 1.5 MB). On disk it is one file per key, so the file system rounds each up to its block size: 39 MB allocated, the same as one plain file per key</td></tr>
+      </table>
+
+      <h3>Performance</h3>
+      <table>
+        <tr><th>10,000 records</th><th>One insert (average)</th><th>Look up one record</th><th>Filtered count</th></tr>
+        <tr><td>PostgreSQL 14 (local socket)</td><td>0.03 ms</td><td>0.02 ms</td><td>0.5 ms</td></tr>
+        <tr><td>SQLite</td><td>0.19 ms</td><td>under 0.01 ms</td><td>0.2 ms</td></tr>
+        <tr><td><strong>MDC Data Engine</strong></td><td><strong>0.75 ms</strong></td><td><strong>954 ms</strong></td><td><strong>950 ms</strong></td></tr>
+      </table>
+      <p>Inserts are slower than the ordinary databases by a single-digit to tens-of-times factor. <strong>Reads are the real difference.</strong> MDC has no indexes: finding one record, or filtering, loads and checks every record in the table. A lookup took 92 ms at 1,000 records and 954 ms at 10,000, growing in proportion, against milliseconds or less for a database with an index. That is fine for a few thousand records behind a chat window and not for an application looking records up at volume. Event streams append in about 0.9 ms; rebuilding a stream of 1,000 events with no snapshots took about 99 ms (streams take a snapshot every 50 events by default, which this run turned off, so ordinary streams rebuild faster; I did not measure that).</p>
+      <p>mdc-lite, 10,000 entries: a put averaged 110 µs and a get 17 µs, against 215 µs and 4 µs for a SQLite key-value table. mdc-lite's put being quicker than SQLite's one-at-a-time commit is not a like-for-like win: I did not check whether it forces each file to disk before returning, which SQLite does.</p>
+
+      <div class="callout"><strong>How to read these numbers</strong>One run on an Apple M5 laptop with a local SSD, default-configured databases, no network between client and server, and nothing larger than 10,000 records. A real RDS instance adds a network round trip to every call, and its disks are network storage, so absolute times there would be higher for every store; the gaps between stores come from MDC's design and would remain. The script that produced them is in the repository (<a href="https://github.com/saji1970/ModelDB/tree/main/mdc/benchmarks">mdc/benchmarks</a>, with the full output); run it on your own hardware before relying on any figure.</div>
+
+      <h3>Ease of access</h3>
+      <table>
+        <tr><th></th><th>A managed database (for example RDS PostgreSQL)</th><th>MDC Platform</th></tr>
+        <tr><td>To get a database</td><td>Create an instance, choose size and storage, set up networking and security groups, create credentials</td><td>Run one container or <code>python -m mdc serve</code>; create a database by saying so</td></tr>
+        <tr><td>To create tables</td><td>Write DDL and manage migrations</td><td>Say <code>create table orders with total decimal</code>, paste an ER diagram, or attach a CSV, SQL script or Markdown design; it shows the design and creates it when you say yes</td></tr>
+        <tr><td>To ask a question</td><td>Write SQL, or build an API on top</td><td>Plain sentences in the browser app; <code>find widget under 20000</code></td></tr>
+        <tr><td>To reach it from code</td><td>A driver, a connection string and pool, and SQL</td><td>A token-gated REST API with four roles</td></tr>
+        <tr><td>Who can use it</td><td>People who know SQL, or an application someone built</td><td>Anyone who can type a sentence, within their token's role</td></tr>
+        <tr><td>Deletes</td><td>Run the statement</td><td>It says what would be lost and waits for a yes</td></tr>
+      </table>
+      <p>What you give up for that ease: no joins, no multi-statement transactions, no indexes, no SQL tooling or BI connectors, no managed backups, patching or failover, and one writing process per database file. If you need any of those, use a database.</p>
+
+      <h3>Cost: not running a managed database</h3>
+      <p>A managed database bills for an instance by the hour whether or not anyone is using it, plus storage, backups beyond a free allowance, and data transfer. MDC Platform is a small program you can run on a usage-billed container host. An illustration for a small always-on app with about 5&nbsp;GB of data, prices as of 2026-10-20:</p>
+      <table>
+        <tr><th>Option</th><th>Basis</th><th>About, per month</th></tr>
+        <tr><td>Amazon RDS for PostgreSQL, Single-AZ db.t4g.micro</td><td>about $0.016 per hour (730 hours is $11.68), plus gp3 storage at about $0.115 per GB, here 20 GB provisioned ($2.30)</td><td><strong>$14</strong>, before backups beyond the free allowance and transfer</td></tr>
+        <tr><td>The same with db.t4g.small</td><td>about $0.032 per hour</td><td>$26</td></tr>
+        <tr><td>Azure Database for PostgreSQL, Burstable B1ms</td><td>about $12 compute a month in US East; storage not checked</td><td>$12 plus storage</td></tr>
+        <tr><td><strong>MDC Platform on Railway</strong></td><td>Hobby plan $5 a month, which includes $5 of usage. Usage: memory $10 per GB (this server idled at about 97 MB resident: under $1), CPU $20 per vCPU (a lightly used server: under $1), volume $0.15 per GB (5 GB: $0.75)</td><td><strong>$5</strong> (usage of $2 to $3 is inside the included $5)</td></tr>
+        <tr><td><a href="index.html#mdc-lite">mdc-lite</a></td><td>Runs inside your app on the device</td><td>$0 for infrastructure</td></tr>
+      </table>
+      <p>On those assumptions the saving against the smallest RDS instance is about <strong>$9 a month (roughly 60%)</strong> and against a Multi-AZ or larger instance more. Google Cloud SQL and the other providers bill the same way (instance hours, storage, backups, transfer); use each provider's calculator for your region and size. AWS and Azure figures here come from third-party price summaries, because AWS's own page did not show them to me, so confirm them in the <a href="https://calculator.aws/">AWS Pricing Calculator</a> and the <a href="https://azure.microsoft.com/pricing/details/postgresql/flexible-server/">Azure page</a>; Railway's are from its <a href="https://docs.railway.com/pricing/plans">own documentation</a>.</p>
+      <div class="callout"><strong>What the saving is, and is not</strong>It is the saving from not paying for an always-on managed instance for a small workload. It is not evidence that MDC is cheaper than PostgreSQL itself: PostgreSQL run in the same kind of container would cost about the same as MDC does. And an RDS instance includes things this does not: automated backups with point-in-time recovery, patching, optional Multi-AZ failover, and monitoring. Run MDC on a host without volume backups and you must make backups yourself. AWS also gives new accounts a free tier of RDS hours for a year, which removes the saving for that period. For a workload that needs real query speed, concurrency or SQL, the right comparison is no longer price.</div>
     </section>
 
     <section id="models">
