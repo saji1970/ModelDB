@@ -26,7 +26,14 @@ local SSD, 2026-10-20). Read it with these limits in mind:
 - One run, one machine. No cloud provider, no concurrency, no network, and no
   workload larger than 10,000 records or entries.
 
-What the results say, plainly: MDC stores the same records in more space than
-the ordinary databases, inserts them more slowly, and its reads scan the whole
-collection (no indexes), so lookups slow down in proportion to the number of
-records. See the documentation page for what that means in practice.
+What the results say, plainly: MDC stores the same records in somewhat more
+space than the ordinary databases (about 1.1x to 1.7x PostgreSQL, 2x to 3x
+SQLite), inserts one record at a time about 14 times slower than PostgreSQL
+(the floor of the DuckDB engine underneath), and reads in a small multiple of
+their time: a lookup by id is indexed, while a lookup by a field value or a
+filtered count still scans, so it grows with the table. A plain DuckDB table
+with typed columns is about a quarter of MDC's size, so typed columns per
+table is the remaining way to shrink it.
+
+In the size comparison each store is loaded in one transaction and
+checkpointed, so a figure is a clean load rather than the file after deletes.

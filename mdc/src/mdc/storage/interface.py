@@ -9,7 +9,7 @@ underneath.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 
 class StorageBackend(ABC):
@@ -38,3 +38,26 @@ class StorageBackend(ABC):
     @abstractmethod
     def search(self, **filters: Any) -> list[str]:
         """Return block_ids matching the given metadata filters."""
+
+
+@runtime_checkable
+class RecordBackend(Protocol):
+    """Optional capability: a backend that keeps the Data Engine's records
+    itself, so the engine can read a collection with one query, find a record
+    by id, and let the backend narrow a filter, instead of fetching one block
+    per record and checking each in Python. `DuckDBStore` has it. A backend
+    without it still works: the engine falls back to blocks.
+
+    A row is (record_id, version, created_at, updated_at, fields_json,
+    checksum_bytes). `record_query` may return MORE than the matches (the
+    engine re-checks every filter); it must never return fewer.
+    """
+
+    def record_insert_many(self, rows: list[tuple], *, replace: bool = False) -> None: ...
+    def record_get(self, collection: str, record_id: str) -> tuple | None: ...
+    def record_exists(self, collection: str, record_id: str) -> bool: ...
+    def record_existing_ids(self, collection: str, record_ids: list[str]) -> set[str]: ...
+    def record_count(self, collection: str) -> int: ...
+    def record_delete(self, collection: str, record_id: str) -> bool: ...
+    def record_delete_collection(self, collection: str) -> int: ...
+    def record_query(self, collection: str, filters: list, limit: int | None = None) -> tuple[list[tuple], bool]: ...

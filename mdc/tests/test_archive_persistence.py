@@ -1,14 +1,16 @@
 """The ARCHIVE tier is persistent: archived objects survive a restart, hold
 only ciphertext, and are re-keyed by key rotation."""
 
+import json
+import random
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from mdc.databases.manager import DatabaseManager
-from mdc.dna.crypto import DecryptionError
-from mdc.dna.encoder import encode
+from mdc.dna.crypto import DecryptionError, encrypt
+from mdc.dna.encoder import decode, encode
 from mdc.dna.storage import DNAStorageBackend
 from mdc.events import EventStore, WrongKeyError
 from mdc.schema.loader import load_default_registry
@@ -110,6 +112,46 @@ def test_archive_rows_never_show_up_as_other_things(store):
     backend(store).put("DOC:a", b"x", metadata={"object_id": "a"})
     assert store.search(object_id="a") == [] and store.search(kind="event") == []
     assert EventStore(store, OLD).list_streams() == []
+
+
+# -- the stored form ------------------------------------------------------------------
+
+
+def test_the_archive_stores_about_what_it_archives_not_four_times_as_much(store):
+    payload = random.Random(1).randbytes(100_000)
+    backend(store).put("big", payload)
+    stored = len(store.get("dna:big"))
+    assert len(payload) < stored < len(payload) + 100  # a nonce, a tag and a header
+    backend(store, ecc_copies=3).put("big3", payload)
+    assert 3 * len(payload) < len(store.get("dna:big3")) < 3 * len(payload) + 100  # redundancy is the only multiplier
+
+
+def test_the_letters_are_still_available_on_demand(store):
+    b = backend(store, ecc_copies=3)
+    b.put("b1", b"letters on demand")
+    sequences = b.sequences_for("b1")
+    assert len(sequences) == 3 and all(set(seq) <= set("ACGT") for seq in sequences)
+    assert decode(sequences[0]) == store.get("dna:b1")[10:10 + len(decode(sequences[0]))]  # the same bytes, as letters
+
+
+def test_a_block_written_in_the_first_persistent_format_is_still_read_and_is_rewritten_packed(store):
+    key = OLD
+    ciphertext = encrypt(key, b"written by the first persistent archive")
+    store.put("dna:old", json.dumps({"copies": 1, "sequences": [encode(ciphertext)]}).encode("ascii"),
+              metadata={"dna_archive": "1", "block": "old", "checksum": "00" * 32, "meta": {"object_id": "old"}})
+    b = backend(store)
+    assert b.get("old") == b"written by the first persistent archive"
+    b.rotate_key(NEW)
+    assert store.get("dna:old").startswith(b"MDCD1") and backend(store, NEW).get("old") == b"written by the first persistent archive"
+
+
+def test_a_damaged_block_header_is_an_error_not_garbage(store):
+    b = backend(store)
+    b.put("b1", b"x" * 100)
+    blob = store.get("dna:b1")
+    store.put("dna:b1", blob[:-5], metadata=store.metadata("dna:b1")["metadata"])  # truncated
+    with pytest.raises(DecryptionError, match="damaged"):
+        backend(store).get("b1")
 
 
 # -- through the router and the manager ---------------------------------------------------

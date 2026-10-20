@@ -53,7 +53,9 @@ This prototype currently carries two separate data surfaces, and they are
    flat record store, `MDCDataEngine`-backed) - what CRUD-through-
    conversation ("Create a merchant called ABC Store in India") actually
    reads and writes, via the generic block-addressed `StorageBackend`
-   (JSON-serialized `Record`s, one block per record).
+   (records go to a `records` table when the backend offers one - see
+   `RecordBackend` in `storage/interface.py` - and to one JSON block each
+   otherwise).
 
 Welding CRUD onto the normalized six-table schema would mean every
 `UpdateOperation` on a single logical "merchant" potentially spanning
@@ -115,14 +117,26 @@ collection in any database via explicit phrasing instead.
 
 ## Storage abstraction
 
+`RecordBackend` is an optional second capability of a `StorageBackend`: a
+backend that keeps the Data Engine's records itself (DuckDB does, in a
+`records` table of typed columns plus the fields as JSON) lets the engine read
+a collection in one query, find a record by id through the primary key, and
+have the database narrow a filter. It only ever returns a superset of the
+matches and the engine re-checks every filter itself, so the answer is the
+engine's on every backend; `create_many` inserts a batch in one transaction.
+Records written by earlier versions as `<collection>:<id>` blocks are moved
+into the table, in one transaction, the first time a database is opened.
+
 `StorageBackend` (`storage/interface.py`) is block-addressed
 (`put`/`get`/`exists`/`delete`/`metadata`/`search`) so `MDCDataEngine`
 never depends on DuckDB specifically. Implementations: `DuckDBStore`
 (durable, one file per database), `MemoryStorageBackend` (the HOT tier),
 and `DNAStorageBackend` (the ARCHIVE tier: AES-256-GCM first, then 2 bits
 per base). The archive is persistent: with `persist=` (the router passes the
-database's own store) each block's encrypted A/C/G/T copies are written
-through under `dna:<block_id>` ids, with only a small index held in memory,
+database's own store) each block's encrypted copies are written through
+under `dna:<block_id>` ids, packed four bases to the byte (the letters
+A/C/G/T are produced on demand, not stored: stored as text they take 4x
+the space for nothing), with only a small index held in memory,
 so archived objects survive a restart; without it the backend is an in-memory
 simulation used by the research tooling and tests. `StorageRouter` (`storage_intelligence/router.py`) sends each
 object to a tier's backend; matrix storage lives in `matrix/`.

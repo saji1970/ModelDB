@@ -343,35 +343,38 @@ state as of 12:00  -&gt;  mood=busy  goal="write report"  level=2</code></pre>
 
     <section id="vs-database">
       <h2>Versus a traditional database: size, speed, ease, cost</h2>
-      <p>MDC is not a faster or smaller database, and it does not replace one for heavy workloads. What it offers is a different trade: a database you can run and use without SQL, drivers or a managed database service, at the price of space and speed. This page gives the measurements, the access difference, and a cost example with its assumptions, so you can decide whether that trade fits. Everything here is for <strong>MDC Platform</strong>, with <a href="index.html#mdc-lite">mdc-lite</a> measured separately below.</p>
+      <p>MDC is not a faster or smaller database than PostgreSQL or SQLite, and it does not replace one for heavy workloads. It is much closer than it was: lookups by id take well under a millisecond and bulk loads are fast. What it offers is a different trade: a database you can run and use without SQL, drivers or a managed database service, at the price of some space and speed. This page gives the measurements, the access difference, and a cost example with its assumptions, so you can decide whether that trade fits. Everything here is for <strong>MDC Platform</strong>, with <a href="index.html#mdc-lite">mdc-lite</a> measured separately below.</p>
 
       <h3>Storage size</h3>
-      <p>The same 10,000 merchant-style records (1.6&nbsp;MB as JSON text), measured after each store was loaded and checkpointed:</p>
+      <p>The same merchant-style records, each store loaded in one transaction and checkpointed:</p>
       <table>
-        <tr><th>Store</th><th>Data on disk</th><th>Against the plain JSON</th></tr>
-        <tr><td>SQLite</td><td>676 KB</td><td>0.4x</td></tr>
-        <tr><td>PostgreSQL 14 (local)</td><td>1.2 MB (table and key index)</td><td>0.7x</td></tr>
-        <tr><td><strong>MDC Data Engine</strong></td><td><strong>3.3 MB</strong></td><td><strong>2.0x</strong></td></tr>
+        <tr><th>Records</th><th>As JSON text</th><th>SQLite</th><th>PostgreSQL 14</th><th>MDC</th></tr>
+        <tr><td>10,000</td><td>1.6 MB</td><td>676 KB</td><td>1.2 MB</td><td><strong>2.0 MB</strong></td></tr>
+        <tr><td>100,000</td><td>15.9 MB</td><td>6.6 MB</td><td>11.6 MB</td><td><strong>12.5 MB</strong></td></tr>
       </table>
-      <p>MDC stores each record as its own JSON block with a version, timestamps, a checksum and metadata, so it takes roughly <strong>2.7 times PostgreSQL's space and about 5 times SQLite's</strong> for the same rows. Sealed data costs more or less depending on the feature:</p>
+      <p>MDC is <strong>larger than both</strong>: about 1.7 times PostgreSQL and 3 times SQLite at 10,000 records, and about 1.1 and 1.9 times at 100,000, where the fixed overhead of the file matters less. It keeps each record's fields as JSON text next to typed columns for the id, version, times and a SHA-256 checksum, and holds a primary-key index so a record can be found by id. A plain DuckDB table with real typed columns held the 100,000 rows in 3.0 MB, a quarter of MDC's size, which shows where the remaining space goes; storing each table's fields as typed columns is the way to close that gap and has not been done.</p>
+      <p>This is smaller than it was. An earlier version stored every record as its own JSON block and took 3.3 MB for the 10,000 records; the records now live in a table, and the ARCHIVE tier no longer stores letters:</p>
       <table>
         <tr><th>What</th><th>Measured</th></tr>
         <tr><td>Event streams (base plus 1,000 events)</td><td>1.18x the plain JSON: the sealing adds a nonce and tag to each record</td></tr>
-        <tr><td>ARCHIVE tier (A/C/G/T text)</td><td><strong>4.00x</strong> the bytes archived, for compressible and incompressible data alike: each byte becomes four letters in the database file</td></tr>
-        <tr><td><a href="index.html#mdc-lite">mdc-lite</a>, 10,000 entries of about 116 bytes</td><td>6.4 MB for 1.1 MB of values (about 5.8x; a SQLite key-value table takes 1.5 MB). On disk it is one file per key, so the file system rounds each up to its block size: 39 MB allocated, the same as one plain file per key</td></tr>
+        <tr><td>ARCHIVE tier</td><td><strong>1.00x</strong> the bytes archived (it was 4.00x). The encrypted bytes are the 2-bit sequence packed four bases to the byte; writing them as the letters A, C, G and T would take four times the space and add nothing, so the letters are produced on demand. Redundant copies, if you ask for them, are the only multiplier</td></tr>
+        <tr><td><a href="index.html#mdc-lite">mdc-lite</a>, 10,000 entries of about 116 bytes</td><td>6.4 MB for 1.1 MB of values (about 5.8x; a SQLite key-value table takes 1.5 MB). mdc-lite still writes its entries as A/C/G/T text, one file per key, so the file system rounds each up to its block size: 39 MB allocated, the same as one plain file per key. Changing that is a format change that has not been made</td></tr>
       </table>
 
       <h3>Performance</h3>
       <table>
-        <tr><th>10,000 records</th><th>One insert (average)</th><th>Look up one record</th><th>Filtered count</th></tr>
-        <tr><td>PostgreSQL 14 (local socket)</td><td>0.03 ms</td><td>0.02 ms</td><td>0.5 ms</td></tr>
-        <tr><td>SQLite</td><td>0.19 ms</td><td>under 0.01 ms</td><td>0.2 ms</td></tr>
-        <tr><td><strong>MDC Data Engine</strong></td><td><strong>0.75 ms</strong></td><td><strong>954 ms</strong></td><td><strong>950 ms</strong></td></tr>
+        <tr><th>10,000 records</th><th>Insert, one at a time</th><th>Insert, one transaction</th><th>Find by id</th><th>Find by a field value</th><th>Filtered count</th></tr>
+        <tr><td>PostgreSQL 14 (local socket)</td><td>0.03 ms</td><td>0.15 s</td><td>0.02 ms</td><td>0.29 ms</td><td>0.5 ms</td></tr>
+        <tr><td>SQLite</td><td>0.16 ms</td><td>0.01 s</td><td>under 0.01 ms</td><td>0.16 ms</td><td>0.2 ms</td></tr>
+        <tr><td><strong>MDC Data Engine</strong></td><td><strong>0.44 ms</strong></td><td><strong>0.47 s</strong></td><td><strong>0.33 ms</strong></td><td><strong>1.3 ms</strong></td><td><strong>3.5 ms</strong></td></tr>
+        <tr><td>MDC at 100,000 records</td><td>0.44 ms</td><td>5.0 s</td><td>1.0 ms</td><td>9.8 ms</td><td>31 ms</td></tr>
+        <tr><td>PostgreSQL at 100,000 records</td><td>0.03 ms</td><td>1.5 s</td><td>0.02 ms</td><td>2.5 ms</td><td>4.7 ms</td></tr>
       </table>
-      <p>Inserts are slower than the ordinary databases by a single-digit to tens-of-times factor. <strong>Reads are the real difference.</strong> MDC has no indexes: finding one record, or filtering, loads and checks every record in the table. A lookup took 92 ms at 1,000 records and 954 ms at 10,000, growing in proportion, against milliseconds or less for a database with an index. That is fine for a few thousand records behind a chat window and not for an application looking records up at volume. Event streams append in about 0.9 ms; rebuilding a stream of 1,000 events with no snapshots took about 99 ms (streams take a snapshot every 50 events by default, which this run turned off, so ordinary streams rebuild faster; I did not measure that).</p>
-      <p>mdc-lite, 10,000 entries: a put averaged 110 µs and a get 17 µs, against 215 µs and 4 µs for a SQLite key-value table. mdc-lite's put being quicker than SQLite's one-at-a-time commit is not a like-for-like win: I did not check whether it forces each file to disk before returning, which SQLite does.</p>
+      <p><strong>Reads are hundreds to thousands of times faster than before.</strong> The first version read every record in a table to answer any question: a lookup took 954 ms at 10,000 records and grew in proportion. Records now sit in a table: a lookup by id goes through the primary key (0.33 ms at 10,000 records and 1.0 ms at 100,000), a table is read with one query, and a filter on =, &lt;, &gt;, between or IN is first narrowed inside the database. MDC still re-checks every filter itself, so the meaning of each operator did not change.</p>
+      <p>Still slower than the ordinary databases, and honestly so: inserting one record at a time takes about 14 times PostgreSQL's time (0.44 ms, which is also what a one-row insert costs in DuckDB, the engine underneath); loading in one transaction takes 3 times; finding by a field value or filtering takes 4 to 7 times, and still grows with the table because there is no index on field values. A bulk load (<code>create_many</code>, used by imports) of 10,000 records takes 0.47 s, about 9 times quicker than inserting them one at a time, and quicker than raw DuckDB through its Python client (3.4 s). The rest: event streams append in about 0.9 ms; rebuilding a stream of 1,000 events with no snapshots took about 100 ms (streams take a snapshot every 50 events by default, which this run turned off); an ARCHIVE put of 256 KB took 3 ms and a get under 1 ms (they were 80 ms and 48 ms when the letters were stored).</p>
+      <p>mdc-lite, 10,000 entries: a put averaged 110 µs and a get 17 µs, against about 200 µs and 4 µs for a SQLite key-value table. mdc-lite's put being quicker than SQLite's one-at-a-time commit is not a like-for-like win: I did not check whether it forces each file to disk before returning, which SQLite does.</p>
 
-      <div class="callout"><strong>How to read these numbers</strong>One run on an Apple M5 laptop with a local SSD, default-configured databases, no network between client and server, and nothing larger than 10,000 records. A real RDS instance adds a network round trip to every call, and its disks are network storage, so absolute times there would be higher for every store; the gaps between stores come from MDC's design and would remain. The script that produced them is in the repository (<a href="https://github.com/saji1970/ModelDB/tree/main/mdc/benchmarks">mdc/benchmarks</a>, with the full output); run it on your own hardware before relying on any figure.</div>
+      <div class="callout"><strong>How to read these numbers</strong>One run on an Apple M5 laptop with a local SSD, default-configured databases, no network between client and server, and nothing larger than 100,000 records. A real RDS instance adds a network round trip to every call, and its disks are network storage, so absolute times there would be higher for every store; the gaps between stores come from MDC's design and would remain. The script that produced them is in the repository (<a href="https://github.com/saji1970/ModelDB/tree/main/mdc/benchmarks">mdc/benchmarks</a>, with the full output); run it on your own hardware before relying on any figure.</div>
 
       <h3>Ease of access</h3>
       <table>
@@ -438,13 +441,13 @@ curl http://127.0.0.1:8000/models/AIM-58F0BB747C/tensors/linear.weight
 
     <section id="tiers">
       <h2>Storage tiers</h2>
-      <p>Tier is a real consequence, not a label - only <span class="tier-chip tier-hot">HOT</span> maps to genuinely different physical storage (an in-memory backend) today; <span class="tier-chip tier-archive">ARCHIVE</span> is the one exception that goes further still, actually encoding bytes to simulated DNA base sequences (2 bits per base, A/C/G/T - a real, working prototype encoder, not physical synthesis). The encrypted base sequences are saved in the database file, so archived objects survive a restart and are removed with their database.</p>
+      <p>Tier is a real consequence, not a label - only <span class="tier-chip tier-hot">HOT</span> maps to genuinely different physical storage (an in-memory backend) today; <span class="tier-chip tier-archive">ARCHIVE</span> is the one exception that goes further still, actually encoding bytes to simulated DNA base sequences (2 bits per base, A/C/G/T - a real, working prototype encoder, not physical synthesis). The encrypted sequences are saved in the database file (packed four bases to the byte; the letters A, C, G and T are produced on demand), so archived objects survive a restart, cost no more space than the data, and are removed with their database.</p>
       <table>
         <tr><th>Tier</th><th>When</th><th>Backend</th></tr>
         <tr><td><span class="tier-chip tier-hot">HOT</span></td><td>≥ 10 reads/day</td><td>In-memory (not persisted across a restart - by design)</td></tr>
         <tr><td><span class="tier-chip tier-warm">WARM</span></td><td>≥ 0.1 reads/day, or mutable &amp; recently touched</td><td>DuckDB (durable)</td></tr>
         <tr><td><span class="tier-chip tier-cold">COLD</span></td><td>Immutable, zero access, zero mutation</td><td>DuckDB (durable)</td></tr>
-        <tr><td><span class="tier-chip tier-archive">ARCHIVE</span></td><td>Explicitly requested (never inferred from low access alone)</td><td>Simulated DNA-base encoding, saved in the database file</td></tr>
+        <tr><td><span class="tier-chip tier-archive">ARCHIVE</span></td><td>Explicitly requested (never inferred from low access alone)</td><td>Simulated DNA-base encoding, packed in the database file</td></tr>
       </table>
 
       <div class="dna-panel">
@@ -708,7 +711,7 @@ python -m mdc key rotate --database data/mdc.duckdb --new-key-file new.key</code
         <tr><th>Question</th><th>Answer</th></tr>
         <tr><td>Wrong key configured</td><td>Reads and writes fail with <em>"The sealing key in use is not the one these streams were sealed with"</em> (HTTP 500 on the API), and nothing is altered. A damaged or tampered record still reports a failed integrity check</td></tr>
         <tr><td>Databases made before key checks existed</td><td>They keep working. Their first rotation records a key check; until then a wrong key shows as a failed integrity check</td></tr>
-        <tr><td>The ARCHIVE tier</td><td>Archived objects are stored in the database file as encrypted A/C/G/T sequences under the same key, so they survive a restart and are re-encrypted by rotation. Only ciphertext is stored; the object's type, tier and metadata are in the index as for any object</td></tr>
+        <tr><td>The ARCHIVE tier</td><td>Archived objects are stored in the database file as encrypted, packed sequences under the same key, so they survive a restart and are re-encrypted by rotation. Only ciphertext is stored; the object's type, tier and metadata are in the index as for any object</td></tr>
         <tr><td>Rotating while the server runs</td><td>Not supported: a record written meanwhile would be sealed under the old key. Stop the server first</td></tr>
         <tr><td>Key in a hardware module</td><td>Not supported. The key is read from the environment or a file</td></tr>
         <tr><td>Still visible in the database file</td><td>The stream id, record counts and sizes, and when each record was written</td></tr>

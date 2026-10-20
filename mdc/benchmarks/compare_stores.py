@@ -8,8 +8,9 @@ Run it yourself - the numbers depend on your machine:
 
 What it measures
   A. Records (the MDC Data Engine vs PostgreSQL, SQLite, DuckDB): the same
-     `merchants`-style rows; storage size, insert time, point lookup and a
-     filtered query. PostgreSQL is a throwaway local cluster (needs the
+     `merchants`-style rows; storage size, insert time (one at a time, and in
+     one transaction), a lookup by id, a lookup by a field value (no index on
+     it in any store) and a filtered count. PostgreSQL is a throwaway local cluster (needs the
      PostgreSQL binaries on PATH or Homebrew's postgresql@14/15/16); it is the
      engine behind RDS, but with no network between client and server.
   B. Small values (mdc-lite vs a SQLite key-value table vs one plain file per
@@ -184,9 +185,10 @@ def bench_postgres(pg: Postgres, data: list[dict], reads: int, scans: int) -> di
     db_bytes = cur.fetchone()[0]
     ids = [random.Random(1).randrange(len(data)) for _ in range(reads)]
     point = median_ms(lambda: cur.execute("SELECT * FROM merchants WHERE id=%s", (random.choice(ids),)) or cur.fetchall(), reads)
+    byfield = median_ms(lambda: cur.execute("SELECT * FROM merchants WHERE name=%s", (data[random.choice(ids)]["name"],)) or cur.fetchall(), reads)
     scan = median_ms(lambda: cur.execute("SELECT count(*) FROM merchants WHERE country='IN' AND ledger_balance>50000") or cur.fetchall(), scans)
     conn.close()
-    return dict(data_bytes=table_bytes, file_bytes=db_bytes, insert_individual_s=individual, insert_bulk_s=bulk, point_ms=point, scan_ms=scan)
+    return dict(data_bytes=table_bytes, file_bytes=db_bytes, insert_individual_s=individual, insert_bulk_s=bulk, point_ms=point, field_ms=byfield, scan_ms=scan)
 
 
 def bench_sqlite(tmp: Path, data: list[dict], reads: int, scans: int) -> dict:
@@ -206,9 +208,10 @@ def bench_sqlite(tmp: Path, data: list[dict], reads: int, scans: int) -> dict:
     conn.execute("VACUUM")
     ids = [random.Random(1).randrange(len(data)) for _ in range(reads)]
     point = median_ms(lambda: conn.execute("SELECT * FROM merchants WHERE id=?", (random.choice(ids),)).fetchall(), reads)
+    byfield = median_ms(lambda: conn.execute("SELECT * FROM merchants WHERE name=?", (data[random.choice(ids)]["name"],)).fetchall(), reads)
     scan = median_ms(lambda: conn.execute("SELECT count(*) FROM merchants WHERE country='IN' AND ledger_balance>50000").fetchall(), scans)
     conn.close()
-    return dict(data_bytes=size_of(path), file_bytes=size_of(path), insert_individual_s=individual, insert_bulk_s=bulk, point_ms=point, scan_ms=scan)
+    return dict(data_bytes=size_of(path), file_bytes=size_of(path), insert_individual_s=individual, insert_bulk_s=bulk, point_ms=point, field_ms=byfield, scan_ms=scan)
 
 
 def bench_duckdb(tmp: Path, data: list[dict], reads: int, scans: int, individual_cap: int) -> dict:
@@ -232,24 +235,36 @@ def bench_duckdb(tmp: Path, data: list[dict], reads: int, scans: int, individual
     conn = duckdb.connect(str(path))
     ids = [random.Random(1).randrange(len(data)) for _ in range(reads)]
     point = median_ms(lambda: conn.execute("SELECT * FROM merchants WHERE id=?", [random.choice(ids)]).fetchall(), reads)
+    byfield = median_ms(lambda: conn.execute("SELECT * FROM merchants WHERE name=?", [data[random.choice(ids)]["name"]]).fetchall(), reads)
     scan = median_ms(lambda: conn.execute("SELECT count(*) FROM merchants WHERE country='IN' AND ledger_balance>50000").fetchall(), scans)
     conn.close()
-    return dict(data_bytes=size_of(path), file_bytes=size_of(path), insert_individual_s=individual, insert_bulk_s=bulk, point_ms=point, scan_ms=scan, individual_scaled_from=len(sample))
+    return dict(data_bytes=size_of(path), file_bytes=size_of(path), insert_individual_s=individual, insert_bulk_s=bulk, point_ms=point, field_ms=byfield, scan_ms=scan, individual_scaled_from=len(sample))
 
 
 def bench_mdc(tmp: Path, data: list[dict], reads: int, scans: int) -> dict:
+    n = len(data)
+    ops = [CreateOperation(collection="merchants", data=r, record_id=f"M{i:07d}") for i, r in enumerate(data)]
+    # one at a time: its own file, so the size below is of a clean bulk load, not of churn
+    one = DuckDBStore(tmp / "one.duckdb")
+    one.init_schema()
+    slow = MDCDataEngine(one, load_default_registry())
+    t = time.perf_counter()
+    for op in ops:
+        slow.create(op)
+    insert = time.perf_counter() - t
+    one.close()
     path = tmp / "mdc.duckdb"
     store = DuckDBStore(path)
     store.init_schema()
     engine = MDCDataEngine(store, load_default_registry())
     t = time.perf_counter()
-    for r in data:
-        engine.create(CreateOperation(collection="merchants", data=r))
-    insert = time.perf_counter() - t
+    engine.create_many(ops)
+    bulk = time.perf_counter() - t
     store.conn.execute("CHECKPOINT")
     size = size_of(path)
-    n = len(data)
-    point = median_ms(lambda: engine.read(ReadOperation(collection="merchants", filters=[Filter(field="name", operator="=", value=data[random.randrange(n)]["name"])])), reads)
+    ids = [f"M{random.Random(1).randrange(n):07d}" for _ in range(reads)]
+    point = median_ms(lambda: engine.get_record("merchants", random.choice(ids)), reads)
+    byfield = median_ms(lambda: engine.read(ReadOperation(collection="merchants", filters=[Filter(field="name", operator="=", value=data[random.randrange(n)]["name"])])), reads)
     scan = median_ms(
         lambda: engine.read(
             ReadOperation(collection="merchants", filters=[Filter(field="country", operator="=", value="IN"), Filter(field="ledger_balance", operator=">", value=50000)])
@@ -257,7 +272,7 @@ def bench_mdc(tmp: Path, data: list[dict], reads: int, scans: int) -> dict:
         scans,
     )
     store.close()
-    return dict(data_bytes=size, file_bytes=size, insert_individual_s=insert, insert_bulk_s=None, point_ms=point, scan_ms=scan)
+    return dict(data_bytes=size, file_bytes=size, insert_individual_s=insert, insert_bulk_s=bulk, point_ms=point, field_ms=byfield, scan_ms=scan)
 
 
 def section_records(sizes: list[int], pg: Postgres | None, tmp: Path) -> tuple[list[str], dict]:
@@ -265,7 +280,7 @@ def section_records(sizes: list[int], pg: Postgres | None, tmp: Path) -> tuple[l
     for n in sizes:
         data = rows(n)
         reads = 200 if n <= 1000 else 100
-        mdc_reads, mdc_scans = (20, 5) if n <= 1000 else (3, 3)
+        mdc_reads, mdc_scans = reads, 20
         results = {}
         if pg:
             results["PostgreSQL (local)"] = bench_postgres(pg, data, reads, 20)
@@ -281,12 +296,12 @@ def section_records(sizes: list[int], pg: Postgres | None, tmp: Path) -> tuple[l
         raw[n] = results
         base = len(json.dumps(data).encode())
         out.append(f"\n**{n:,} records** (the same rows as JSON text: {fmt_bytes(base)})\n")
-        out.append("| Store | Data on disk | Insert, one at a time | Insert, one transaction | Point lookup (median) | Filtered query (median) |")
-        out.append("|---|---|---|---|---|---|")
+        out.append("| Store | Data on disk | Insert, one at a time | Insert, one transaction | Find by id (median) | Find by a field value (median) | Filtered count (median) |")
+        out.append("|---|---|---|---|---|---|---|")
         for name, r in results.items():
             bulk = f"{r['insert_bulk_s']:.2f} s" if r["insert_bulk_s"] is not None else "n/a"
             out.append(
-                f"| {name} | {fmt_bytes(r['data_bytes'])} | {r['insert_individual_s']:.2f} s | {bulk} | {r['point_ms']:.2f} ms | {r['scan_ms']:.1f} ms |"
+                f"| {name} | {fmt_bytes(r['data_bytes'])} | {r['insert_individual_s']:.2f} s | {bulk} | {r['point_ms']:.2f} ms | {r['field_ms']:.2f} ms | {r['scan_ms']:.1f} ms |"
             )
     return out, raw
 
